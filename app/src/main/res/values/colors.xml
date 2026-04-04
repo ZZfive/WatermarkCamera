@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors - 温和绿色系 -->
+    <color name="primary">#FF4CAF50</color>
+    <color name="on_primary">#FFFFFFFF</color>
+    <color name="primary_container">#FFC8E6C9</color>
+    <color name="on_primary_container">#FF1B5E20</color>
+
+    <!-- Secondary Colors -->
+    <color name="secondary">#FF81C784</color>
+    <color name="on_secondary">#FF1B5E20</color>
+
+    <!-- Background Colors -->
+    <color name="background">#FFF5F5F5</color>
+    <color name="on_background">#FF212121</color>
+
+    <!-- Surface Colors -->
+    <color name="surface">#FFFFFFFF</color>
+    <color name="on_surface">#FF212121</color>
+    <color name="surface_variant">#FFE8F5E9</color>
+
+    <!-- Error Colors -->
+    <color name="error">#FFD32F2F</color>
+    <color name="on_error">#FFFFFFFF</color>
+
+    <!-- Watermark Colors -->
+    <color name="watermark_text">#FFFFFFFF</color>
+    <color name="watermark_background">#80000000</color>
+</resources>

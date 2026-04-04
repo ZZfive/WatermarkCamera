@@ -1,0 +1,15 @@
+# Gradle
+.gradle
+build/
+gradle-8.4.zip
+
+# IDE
+.idea/
+*.iml
+
+# Local config
+local.properties
+
+# Android
+*.apk
+*.aab
