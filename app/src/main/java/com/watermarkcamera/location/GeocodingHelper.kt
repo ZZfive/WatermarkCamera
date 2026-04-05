@@ -25,24 +25,14 @@ class GeocodingHelper(private val context: Context) {
             try {
                 val geocoder = Geocoder(context, Locale.getDefault())
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    // Android 13+ 使用异步方式
-                    var result: String? = null
-                    val latch = java.util.concurrent.CountDownLatch(1)
-                    geocoder.getFromLocation(latitude, longitude, 1) { addrs ->
-                        result = formatAddress(addrs.firstOrNull())
-                        latch.countDown()
-                    }
-                    try {
-                        latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                    } catch (e: InterruptedException) {
-                        // ignore
-                    }
-                    result
+                // 使用同步方式获取地址（简化逻辑）
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+
+                if (!addresses.isNullOrEmpty()) {
+                    formatAddress(addresses[0])
                 } else {
-                    @Suppress("DEPRECATION")
-                    val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-                    formatAddress(addresses?.firstOrNull())
+                    null
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -55,42 +45,33 @@ class GeocodingHelper(private val context: Context) {
         if (addr == null) return null
 
         return buildString {
-            // 国家和城市
+            // 国家
             addr.countryName?.let { append(it) }
+            // 省份/直辖市
             addr.adminArea?.let {
                 if (isNotEmpty()) append(" ")
                 append(it)
             }
+            // 城市
             addr.locality?.let {
                 if (isNotEmpty()) append(" ")
                 append(it)
             }
-
-            // 如果太短，尝试添加街道
-            if (length < 6) {
-                addr.thoroughfare?.let {
-                    if (isNotEmpty()) append(" ")
-                    append(it)
-                }
+            // 区/县
+            addr.subLocality?.let {
+                if (isNotEmpty()) append(" ")
+                append(it)
             }
-
+            // 街道
+            addr.thoroughfare?.let {
+                if (isNotEmpty()) append(" ")
+                append(it)
+            }
             // 门牌号
             addr.subThoroughfare?.let {
                 if (isNotEmpty()) append(" ")
                 append(it)
             }
         }.takeIf { it.isNotEmpty() }
-    }
-
-    /**
-     * 格式化地址，保留关键信息
-     */
-    fun formatAddress(address: String): String {
-        // 简化地址，过长的地址只保留关键部分
-        return if (address.length > 30) {
-            address.take(27) + "..."
-        } else {
-            address
-        }
     }
 }

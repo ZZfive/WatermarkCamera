@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -139,6 +140,17 @@ fun SettingsScreen(
                     singleLine = true
                 )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 保存原图开关
+            SettingSwitchCard(
+                icon = Icons.Default.PhotoLibrary,
+                title = "保存原图",
+                subtitle = "同时保存一张不带水印的原图",
+                checked = uiState.saveOriginal,
+                onCheckedChange = { viewModel.updateSaveOriginal(it) }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 

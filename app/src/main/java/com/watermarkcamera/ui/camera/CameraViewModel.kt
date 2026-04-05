@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
@@ -130,15 +131,32 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(isLoading = true) }
 
             try {
-                val originalUri = cameraXManager.takePicture()
-                if (originalUri != null) {
+                val originalBitmap = cameraXManager.takePictureToBitmap()
+                if (originalBitmap != null) {
                     // 合成水印
-                    val watermarkedUri = composeWatermark(originalUri)
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            capturedPhotoUri = watermarkedUri
-                        )
+                    val watermarkedBitmap = composeWatermarkBitmap(originalBitmap)
+                    if (watermarkedBitmap != null) {
+                        // 保存水印照片
+                        val watermarkedUri = saveBitmapToGallery(watermarkedBitmap, "Watermark_")
+
+                        // 如果设置保留原图，也保存原图
+                        if (preferences.saveOriginal) {
+                            saveBitmapToGallery(originalBitmap, "Original_")
+                        }
+
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                capturedPhotoUri = watermarkedUri
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = "水印合成失败"
+                            )
+                        }
                     }
                 } else {
                     _uiState.update {
@@ -159,51 +177,36 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private suspend fun composeWatermark(originalUri: Uri): Uri? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val context = getApplication<Application>()
-
-                // 读取原始图片
-                val inputStream = context.contentResolver.openInputStream(originalUri)
-                val originalBitmap = BitmapFactory.decodeStream(inputStream)
-                inputStream?.close()
-
-                if (originalBitmap == null) return@withContext null
-
-                // 从 SharedPreferences 读取水印配置
-                val locationData = _uiState.value.locationData
-                val watermarkConfig = WatermarkConfig(
-                    showText = preferences.showCustomText && preferences.customText.isNotEmpty(),
-                    customText = preferences.customText,
-                    showLocation = preferences.showLocation && locationData != null && locationData.address.isNotEmpty(),
-                    locationAddress = locationData?.address ?: "",
-                    latitude = locationData?.latitude,
-                    longitude = locationData?.longitude,
-                    showTimestamp = preferences.showTimestamp,
-                    timestamp = System.currentTimeMillis()
-                )
-
-                // 合成水印
-                val watermarkedBitmap = watermarkComposer.composeWatermark(originalBitmap, watermarkConfig)
-
-                // 保存到相册
-                saveToGallery(context, watermarkedBitmap)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
+    private fun composeWatermarkBitmap(originalBitmap: Bitmap): Bitmap? {
+        return try {
+            val locationData = _uiState.value.locationData
+            val watermarkConfig = WatermarkConfig(
+                showText = preferences.showCustomText && preferences.customText.isNotEmpty(),
+                customText = preferences.customText,
+                showLocation = preferences.showLocation && locationData != null && locationData.address.isNotEmpty(),
+                locationAddress = locationData?.address ?: "",
+                latitude = locationData?.latitude,
+                longitude = locationData?.longitude,
+                showTimestamp = preferences.showTimestamp,
+                timestamp = System.currentTimeMillis()
+            )
+            watermarkComposer.composeWatermark(originalBitmap, watermarkConfig)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
-    private fun saveToGallery(context: android.content.Context, bitmap: Bitmap): Uri? {
-        val filename = "Watermark_${System.currentTimeMillis()}.jpg"
+    private fun saveBitmapToGallery(bitmap: Bitmap, prefix: String): Uri? {
+        val context = getApplication<Application>()
+        val filename = "${prefix}${System.currentTimeMillis()}.jpg"
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/WatermarkCamera")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
 
             val uri = context.contentResolver.insert(
@@ -215,8 +218,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 context.contentResolver.openOutputStream(it)?.use { os ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 95, os)
                 }
+                val updateValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                context.contentResolver.update(it, updateValues, null, null)
             }
-
             uri
         } else {
             val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
@@ -228,7 +234,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 95, os)
             }
 
-            Uri.fromFile(file)
+            val uri = Uri.fromFile(file)
+            val mediaScanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+            mediaScanIntent.data = uri
+            context.sendBroadcast(mediaScanIntent)
+            uri
         }
     }
 

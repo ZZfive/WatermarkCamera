@@ -2,14 +2,13 @@ package com.watermarkcamera.location
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.location.Location
+import android.os.Handler
+import android.os.Looper
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 
 /**
@@ -32,45 +31,53 @@ class LocationManager(private val context: Context) {
     private val geocodingHelper = GeocodingHelper(context)
 
     /**
-     * 获取当前位置（一次性）- 使用 getCurrentLocation 更可靠
+     * 获取当前位置 - 优先获取 lastKnownLocation，更快更稳定
      */
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): LocationData? {
-        return try {
-            withTimeout(LOCATION_TIMEOUT_MS) {
-                suspendCancellableCoroutine { continuation ->
-                    val cancellationToken = CancellationTokenSource()
-
-                    fusedLocationClient.getCurrentLocation(
-                        Priority.PRIORITY_HIGH_ACCURACY,
-                        cancellationToken.token
-                    ).addOnSuccessListener { location: Location? ->
-                        if (location != null) {
-                            continuation.resume(LocationData(location.latitude, location.longitude))
-                        } else {
-                            fusedLocationClient.lastLocation.addOnSuccessListener { lastLocation ->
-                                if (lastLocation != null) {
-                                    continuation.resume(LocationData(lastLocation.latitude, lastLocation.longitude))
-                                } else {
-                                    continuation.resume(null)
-                                }
-                            }.addOnFailureListener {
-                                continuation.resume(null)
-                            }
+        return suspendCancellableCoroutine { continuation ->
+            // 先尝试 lastKnownLocation（快速）
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { location ->
+                    if (location != null) {
+                        continuation.resume(LocationData(location.latitude, location.longitude))
+                    } else {
+                        // 如果没有 lastKnownLocation，尝试获取当前位置
+                        requestFreshLocation { freshLocation ->
+                            continuation.resume(freshLocation)
                         }
-                    }.addOnFailureListener {
-                        continuation.resume(null)
-                    }
-
-                    continuation.invokeOnCancellation {
-                        cancellationToken.cancel()
                     }
                 }
+                .addOnFailureListener {
+                    // lastKnownLocation 失败，尝试获取当前位置
+                    requestFreshLocation { freshLocation ->
+                        continuation.resume(freshLocation)
+                    }
+                }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun requestFreshLocation(callback: (LocationData?) -> Unit) {
+        val cancellationToken = CancellationTokenSource()
+
+        // 5秒超时
+        Handler(Looper.getMainLooper()).postDelayed({
+            cancellationToken.cancel()
+            callback(null)
+        }, 5000)
+
+        fusedLocationClient.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            cancellationToken.token
+        ).addOnSuccessListener { location ->
+            if (location != null) {
+                callback(LocationData(location.latitude, location.longitude))
+            } else {
+                callback(null)
             }
-        } catch (e: TimeoutCancellationException) {
-            null
-        } catch (e: Exception) {
-            null
+        }.addOnFailureListener {
+            callback(null)
         }
     }
 
@@ -80,38 +87,39 @@ class LocationManager(private val context: Context) {
     suspend fun getLocationWithAddress(): LocationData? {
         val location = getCurrentLocation() ?: return null
 
-        // 尝试获取地址，如果失败则只返回经纬度
+        // 尝试获取地址
         val address = try {
             geocodingHelper.getAddressFromLocation(location.latitude, location.longitude)
         } catch (e: Exception) {
             null
         }
 
-        return location.copy(address = address ?: formatLocationAsAddress(location.latitude, location.longitude))
+        return LocationData(
+            latitude = location.latitude,
+            longitude = location.longitude,
+            address = address ?: formatAsCoordinates(location.latitude, location.longitude)
+        )
     }
 
-    /**
-     * 将经纬度格式化为一个简短的地址字符串
-     */
-    private fun formatLocationAsAddress(lat: Double, lng: Double): String {
+    private fun formatAsCoordinates(lat: Double, lng: Double): String {
         return "${String.format("%.4f", lat)}, ${String.format("%.4f", lng)}"
     }
 
     /**
-     * 异步获取位置（不阻塞）
+     * 异步获取位置
      */
     @SuppressLint("MissingPermission")
-    fun getLastKnownLocation(callback: (Location?) -> Unit) {
+    fun getLastKnownLocation(callback: (LocationData?) -> Unit) {
         fusedLocationClient.lastLocation
             .addOnSuccessListener { location ->
-                callback(location)
+                if (location != null) {
+                    callback(LocationData(location.latitude, location.longitude))
+                } else {
+                    callback(null)
+                }
             }
             .addOnFailureListener {
                 callback(null)
             }
-    }
-
-    companion object {
-        private const val LOCATION_TIMEOUT_MS = 15000L // 15秒超时
     }
 }

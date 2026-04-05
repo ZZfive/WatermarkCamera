@@ -29,11 +29,16 @@ class WatermarkPreferences(context: Context) {
         get() = prefs.getString(KEY_CUSTOM_TEXT, "") ?: ""
         set(value) = prefs.edit().putString(KEY_CUSTOM_TEXT, value).apply()
 
+    var saveOriginal: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_ORIGINAL, false)
+        set(value) = prefs.edit().putBoolean(KEY_SAVE_ORIGINAL, value).apply()
+
     companion object {
         private const val PREFS_NAME = "watermark_prefs"
         private const val KEY_SHOW_TIMESTAMP = "show_timestamp"
         private const val KEY_SHOW_LOCATION = "show_location"
         private const val KEY_SHOW_CUSTOM_TEXT = "show_custom_text"
         private const val KEY_CUSTOM_TEXT = "custom_text"
+        private const val KEY_SAVE_ORIGINAL = "save_original"
     }
 }

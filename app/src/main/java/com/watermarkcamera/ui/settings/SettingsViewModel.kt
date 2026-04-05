@@ -12,7 +12,8 @@ data class SettingsUiState(
     val showTimestamp: Boolean = true,
     val showLocation: Boolean = true,
     val showCustomText: Boolean = true,
-    val customText: String = ""
+    val customText: String = "",
+    val saveOriginal: Boolean = false
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -24,7 +25,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             showTimestamp = preferences.showTimestamp,
             showLocation = preferences.showLocation,
             showCustomText = preferences.showCustomText,
-            customText = preferences.customText
+            customText = preferences.customText,
+            saveOriginal = preferences.saveOriginal
         )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -47,5 +49,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateCustomText(text: String) {
         preferences.customText = text
         _uiState.update { it.copy(customText = text) }
+    }
+
+    fun updateSaveOriginal(save: Boolean) {
+        preferences.saveOriginal = save
+        _uiState.update { it.copy(saveOriginal = save) }
     }
 }

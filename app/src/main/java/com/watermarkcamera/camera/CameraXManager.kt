@@ -1,23 +1,22 @@
 package com.watermarkcamera.camera
 
-import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import java.text.SimpleDateFormat
-import java.util.Locale
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * CameraX 管理器
@@ -34,27 +33,24 @@ class CameraXManager(
      * 启动相机
      */
     suspend fun startCamera(previewView: PreviewView): Boolean {
-        return suspendCoroutine { continuation ->
+        return suspendCancellableCoroutine { continuation ->
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
             cameraProviderFuture.addListener({
                 try {
                     cameraProvider = cameraProviderFuture.get()
 
-                    // Preview 配置
                     preview = Preview.Builder()
                         .build()
                         .also {
                             it.setSurfaceProvider(previewView.surfaceProvider)
                         }
 
-                    // ImageCapture 配置
                     imageCapture = ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setJpegQuality(90)
                         .build()
 
-                    // 绑定用例
                     cameraProvider?.unbindAll()
                     cameraProvider?.bindToLifecycle(
                         lifecycleOwner,
@@ -72,47 +68,22 @@ class CameraXManager(
     }
 
     /**
-     * 拍照并保存到相册
+     * 拍照并返回 Bitmap（不保存到 MediaStore）
      */
-    suspend fun takePicture(): Uri? {
-        return suspendCoroutine { continuation ->
+    suspend fun takePictureToBitmap(): Bitmap? {
+        return suspendCancellableCoroutine { continuation ->
             val imageCapture = imageCapture ?: run {
                 continuation.resume(null)
-                return@suspendCoroutine
+                return@suspendCancellableCoroutine
             }
 
-            // 创建文件名
-            val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-                .format(System.currentTimeMillis())
-            val fileName = "Watermark_$name.jpg"
-
-            // 创建输出选项
-            val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ 使用 MediaStore
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/WatermarkCamera")
-                }
-                ImageCapture.OutputFileOptions.Builder(
-                    context.contentResolver,
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                    contentValues
-                ).build()
-            } else {
-                // 旧版本使用文件
-                val outputDir = context.getExternalFilesDir("Pictures")
-                val outputFile = java.io.File(outputDir, fileName)
-                ImageCapture.OutputFileOptions.Builder(outputFile).build()
-            }
-
-            // 执行拍照
             imageCapture.takePicture(
-                outputOptions,
                 ContextCompat.getMainExecutor(context),
-                object : ImageCapture.OnImageSavedCallback {
-                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                        continuation.resume(output.savedUri)
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(imageProxy: ImageProxy) {
+                        val bitmap = imageProxyToBitmap(imageProxy)
+                        imageProxy.close()
+                        continuation.resume(bitmap)
                     }
 
                     override fun onError(exception: ImageCaptureException) {
@@ -120,6 +91,28 @@ class CameraXManager(
                     }
                 }
             )
+        }
+    }
+
+    /**
+     * 将 ImageProxy 转换为 Bitmap
+     */
+    private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
+        val buffer = imageProxy.planes[0].buffer
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+
+        // 根据旋转角度校正
+        val rotationDegrees = imageProxy.imageInfo.rotationDegrees
+        return if (rotationDegrees != 0) {
+            val matrix = Matrix().apply {
+                postRotate(rotationDegrees.toFloat())
+            }
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        } else {
+            bitmap
         }
     }
 
