@@ -58,10 +58,11 @@ class WatermarkComposer(private val context: Context) {
         alignedBlocks.forEach { (_, blocks) ->
             blocks.forEachIndexed { index, (blockConfig, content) ->
                 // 计算堆叠偏移：同一位置的块依次向下排列
+                // 使用完整高度（含padding）避免重叠
                 val stackOffset = if (index > 0) {
                     var offset = 0f
                     for (i in 0 until index) {
-                        offset += calculateBlockContentHeight(blocks[i].first, blocks[i].second)
+                        offset += calculateBlockHeight(blocks[i].first, blocks[i].second)
                         offset += WatermarkStyle.STACK_SPACING * density
                     }
                     offset
