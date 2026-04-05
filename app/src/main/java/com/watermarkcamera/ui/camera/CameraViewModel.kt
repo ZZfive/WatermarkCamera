@@ -40,7 +40,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     // 从 SharedPreferences 读取设置
     val showTimestamp: Boolean get() = preferences.showTimestamp
-    val showLocation: Boolean get() = preferences.showLocation
+    val showLocationAddress: Boolean get() = preferences.showLocationAddress
+    val showLocationCoords: Boolean get() = preferences.showLocationCoords
     val showCustomText: Boolean get() = preferences.showCustomText
     val customText: String get() = preferences.customText
 
@@ -183,7 +184,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             val watermarkConfig = WatermarkConfig(
                 showText = preferences.showCustomText && preferences.customText.isNotEmpty(),
                 customText = preferences.customText,
-                showLocation = preferences.showLocation && locationData != null && locationData.address.isNotEmpty(),
+                showLocationAddress = preferences.showLocationAddress && locationData != null && locationData.address.isNotEmpty(),
+                showLocationCoords = preferences.showLocationCoords && locationData != null && locationData.latitude != 0.0,
                 locationAddress = locationData?.address ?: "",
                 latitude = locationData?.latitude,
                 longitude = locationData?.longitude,

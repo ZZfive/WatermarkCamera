@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.update
 
 data class SettingsUiState(
     val showTimestamp: Boolean = true,
-    val showLocation: Boolean = true,
+    val showLocationAddress: Boolean = true,
+    val showLocationCoords: Boolean = true,
     val showCustomText: Boolean = true,
     val customText: String = "",
     val saveOriginal: Boolean = false
@@ -23,7 +24,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             showTimestamp = preferences.showTimestamp,
-            showLocation = preferences.showLocation,
+            showLocationAddress = preferences.showLocationAddress,
+            showLocationCoords = preferences.showLocationCoords,
             showCustomText = preferences.showCustomText,
             customText = preferences.customText,
             saveOriginal = preferences.saveOriginal
@@ -36,9 +38,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(showTimestamp = show) }
     }
 
-    fun updateShowLocation(show: Boolean) {
-        preferences.showLocation = show
-        _uiState.update { it.copy(showLocation = show) }
+    fun updateShowLocationAddress(show: Boolean) {
+        preferences.showLocationAddress = show
+        _uiState.update { it.copy(showLocationAddress = show) }
+    }
+
+    fun updateShowLocationCoords(show: Boolean) {
+        preferences.showLocationCoords = show
+        _uiState.update { it.copy(showLocationCoords = show) }
     }
 
     fun updateShowCustomText(show: Boolean) {

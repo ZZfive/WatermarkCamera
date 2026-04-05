@@ -6,7 +6,8 @@ package com.watermarkcamera.watermark
 data class WatermarkConfig(
     val showText: Boolean = true,
     val customText: String = "",
-    val showLocation: Boolean = true,
+    val showLocationAddress: Boolean = true,
+    val showLocationCoords: Boolean = true,
     val locationAddress: String = "",
     val latitude: Double? = null,
     val longitude: Double? = null,

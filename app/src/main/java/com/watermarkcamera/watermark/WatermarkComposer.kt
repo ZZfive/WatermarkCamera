@@ -80,12 +80,12 @@ class WatermarkComposer(private val context: Context) {
         }
 
         // 位置地址
-        if (config.showLocation && config.locationAddress.isNotEmpty()) {
+        if (config.showLocationAddress && config.locationAddress.isNotEmpty()) {
             lines.add(config.locationAddress)
         }
 
         // 经纬度
-        if (config.showLocation && config.latitude != null && config.longitude != null) {
+        if (config.showLocationCoords && config.latitude != null && config.longitude != null) {
             lines.add("纬度: ${String.format(Locale.US, "%.6f", config.latitude)}")
             lines.add("经度: ${String.format(Locale.US, "%.6f", config.longitude)}")
         }

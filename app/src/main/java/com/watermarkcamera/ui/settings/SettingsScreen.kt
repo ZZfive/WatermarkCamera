@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Card
@@ -106,13 +107,24 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 位置开关
+            // 位置地址开关
             SettingSwitchCard(
                 icon = Icons.Default.LocationOn,
-                title = "显示位置",
-                subtitle = "显示地址和经纬度信息",
-                checked = uiState.showLocation,
-                onCheckedChange = { viewModel.updateShowLocation(it) }
+                title = "显示地址",
+                subtitle = "显示地理位置名称",
+                checked = uiState.showLocationAddress,
+                onCheckedChange = { viewModel.updateShowLocationAddress(it) }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 经纬度开关
+            SettingSwitchCard(
+                icon = Icons.Default.GpsFixed,
+                title = "显示经纬度",
+                subtitle = "显示GPS坐标信息",
+                checked = uiState.showLocationCoords,
+                onCheckedChange = { viewModel.updateShowLocationCoords(it) }
             )
 
             Spacer(modifier = Modifier.height(12.dp))

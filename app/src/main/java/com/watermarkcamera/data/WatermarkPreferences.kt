@@ -17,9 +17,13 @@ class WatermarkPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_SHOW_TIMESTAMP, true)
         set(value) = prefs.edit().putBoolean(KEY_SHOW_TIMESTAMP, value).apply()
 
-    var showLocation: Boolean
-        get() = prefs.getBoolean(KEY_SHOW_LOCATION, true)
-        set(value) = prefs.edit().putBoolean(KEY_SHOW_LOCATION, value).apply()
+    var showLocationAddress: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_LOCATION_ADDRESS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_LOCATION_ADDRESS, value).apply()
+
+    var showLocationCoords: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_LOCATION_COORDS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_LOCATION_COORDS, value).apply()
 
     var showCustomText: Boolean
         get() = prefs.getBoolean(KEY_SHOW_CUSTOM_TEXT, true)
@@ -36,7 +40,8 @@ class WatermarkPreferences(context: Context) {
     companion object {
         private const val PREFS_NAME = "watermark_prefs"
         private const val KEY_SHOW_TIMESTAMP = "show_timestamp"
-        private const val KEY_SHOW_LOCATION = "show_location"
+        private const val KEY_SHOW_LOCATION_ADDRESS = "show_location_address"
+        private const val KEY_SHOW_LOCATION_COORDS = "show_location_coords"
         private const val KEY_SHOW_CUSTOM_TEXT = "show_custom_text"
         private const val KEY_CUSTOM_TEXT = "custom_text"
         private const val KEY_SAVE_ORIGINAL = "save_original"
