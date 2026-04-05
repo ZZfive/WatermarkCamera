@@ -139,7 +139,10 @@ class CameraXManager(
             val matrix = Matrix().apply {
                 postRotate(rotationDegrees.toFloat())
             }
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            // 保留原始 bitmap 的密度
+            rotated.density = bitmap.density
+            rotated
         } else {
             bitmap
         }
@@ -152,7 +155,10 @@ class CameraXManager(
         val matrix = Matrix().apply {
             preScale(-1f, 1f)
         }
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        val flipped = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        // 保留原始 bitmap 的密度，避免水印大小不一致
+        flipped.density = bitmap.density
+        return flipped
     }
 
     /**
