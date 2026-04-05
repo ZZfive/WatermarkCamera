@@ -2,6 +2,7 @@
 .gradle
 build/
 gradle-8.4.zip
+gradle/wrapper/gradle-wrapper.jar
 
 # IDE
 .idea/
@@ -13,3 +14,6 @@ local.properties
 # Android
 *.apk
 *.aab
+
+# Keystore - DO NOT COMMIT
+*.keystore
