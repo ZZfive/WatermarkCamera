@@ -13,7 +13,8 @@ data class CameraUiState(
     val errorMessage: String? = null,
     val hasCameraPermission: Boolean = false,
     val hasLocationPermission: Boolean = false,
-    val showPermissionRationale: Boolean = false
+    val showPermissionRationale: Boolean = false,
+    val isUsingFrontCamera: Boolean = false
 )
 
 /**

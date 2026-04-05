@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.net.Uri
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -28,11 +27,37 @@ class CameraXManager(
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
     private var preview: Preview? = null
+    private var currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    private var previewView: PreviewView? = null
+
+    /**
+     * 当前是否使用前置摄像头
+     */
+    val isUsingFrontCamera: Boolean
+        get() = currentCameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA
 
     /**
      * 启动相机
      */
     suspend fun startCamera(previewView: PreviewView): Boolean {
+        this.previewView = previewView
+        return bindCamera(currentCameraSelector)
+    }
+
+    /**
+     * 切换前后摄像头
+     */
+    suspend fun switchCamera(previewView: PreviewView): Boolean {
+        this.previewView = previewView
+        currentCameraSelector = if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        }
+        return bindCamera(currentCameraSelector)
+    }
+
+    private suspend fun bindCamera(cameraSelector: CameraSelector): Boolean {
         return suspendCancellableCoroutine { continuation ->
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
@@ -43,7 +68,7 @@ class CameraXManager(
                     preview = Preview.Builder()
                         .build()
                         .also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
+                            it.setSurfaceProvider(previewView?.surfaceProvider)
                         }
 
                     imageCapture = ImageCapture.Builder()
@@ -54,7 +79,7 @@ class CameraXManager(
                     cameraProvider?.unbindAll()
                     cameraProvider?.bindToLifecycle(
                         lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        cameraSelector,
                         preview,
                         imageCapture
                     )
@@ -81,7 +106,11 @@ class CameraXManager(
                 ContextCompat.getMainExecutor(context),
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(imageProxy: ImageProxy) {
-                        val bitmap = imageProxyToBitmap(imageProxy)
+                        var bitmap = imageProxyToBitmap(imageProxy)
+                        // 前置摄像头需要镜像翻转
+                        if (isUsingFrontCamera && bitmap != null) {
+                            bitmap = flipHorizontally(bitmap)
+                        }
                         imageProxy.close()
                         continuation.resume(bitmap)
                     }
@@ -114,6 +143,16 @@ class CameraXManager(
         } else {
             bitmap
         }
+    }
+
+    /**
+     * 水平翻转（用于前置摄像头）
+     */
+    private fun flipHorizontally(bitmap: Bitmap): Bitmap {
+        val matrix = Matrix().apply {
+            preScale(-1f, 1f)
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     /**

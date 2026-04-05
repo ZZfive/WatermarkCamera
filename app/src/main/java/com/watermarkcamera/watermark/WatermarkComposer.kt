@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
-import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -14,6 +13,7 @@ import java.util.Locale
 /**
  * 水印合成核心类
  * 使用 Canvas 将水印绘制到图片上
+ * 每个水印块独立绘制，支持不同的位置和字体大小
  */
 class WatermarkComposer(private val context: Context) {
 
@@ -22,86 +22,142 @@ class WatermarkComposer(private val context: Context) {
     /**
      * 合成水印到原始图片
      */
-    fun composeWatermark(bitmap: Bitmap, config: WatermarkConfig): Bitmap {
+    fun composeWatermark(
+        bitmap: Bitmap,
+        config: WatermarkConfig,
+        layout: WatermarkLayoutConfig
+    ): Bitmap {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
 
-        // 构建水印文本行
-        val lines = buildWatermarkLines(config)
+        // 收集所有启用的块及其内容
+        val enabledBlocks = mutableListOf<Pair<WatermarkBlockConfig, String>>()
 
-        if (lines.isEmpty()) {
-            return result
+        if (layout.timestamp.enabled) {
+            enabledBlocks.add(layout.timestamp to formatTimestamp(config.timestamp))
+        }
+        if (layout.address.enabled && config.locationAddress.isNotEmpty()) {
+            enabledBlocks.add(layout.address to config.locationAddress)
+        }
+        if (layout.coords.enabled && config.latitude != null && config.longitude != null) {
+            val coordsText = "纬度: ${String.format(Locale.US, "%.6f", config.latitude)}\n经度: ${String.format(Locale.US, "%.6f", config.longitude)}"
+            enabledBlocks.add(layout.coords to coordsText)
+        }
+        if (layout.custom.enabled && config.customText.isNotEmpty()) {
+            enabledBlocks.add(layout.custom to config.customText)
         }
 
-        // 创建画笔
-        val textPaint = createTextPaint()
-        val bgPaint = createBackgroundPaint()
+        // 按对齐位置分组，同一位置的块垂直堆叠
+        val alignedBlocks = enabledBlocks.groupBy { it.first.alignment }
 
-        // 计算水印区域尺寸
-        val lineHeight = textPaint.fontSpacing
-        val padding = WatermarkStyle.PADDING * density
-        val backgroundHeight = lines.size * lineHeight + padding * 2
-        val backgroundWidth = lines.maxOf { textPaint.measureText(it) } + padding * 2
-
-        // 计算水印位置
-        val (bgX, bgY) = calculateBackgroundPosition(
-            backgroundWidth,
-            backgroundHeight,
-            result.width.toFloat(),
-            result.height.toFloat(),
-            config.position
-        )
-
-        // 绘制半透明背景
-        val bgRect = RectF(
-            bgX,
-            bgY,
-            bgX + backgroundWidth,
-            bgY + backgroundHeight
-        )
-        canvas.drawRoundRect(bgRect, WatermarkStyle.CORNER_RADIUS * density, WatermarkStyle.CORNER_RADIUS * density, bgPaint)
-
-        // 绘制文字
-        var currentY = bgY + padding + textPaint.textSize
-        lines.forEach { line ->
-            canvas.drawText(line, bgX + padding, currentY, textPaint)
-            currentY += lineHeight
+        alignedBlocks.forEach { (_, blocks) ->
+            blocks.forEachIndexed { index, (blockConfig, content) ->
+                // 计算堆叠偏移：同一位置的块依次向下排列
+                val stackOffset = if (index > 0) {
+                    // 获取前面所有块的总高度 + 间距
+                    var offset = 0f
+                    for (i in 0 until index) {
+                        offset += calculateBlockHeight(blocks[i].first, blocks[i].second)
+                        offset += WatermarkStyle.STACK_SPACING * density
+                    }
+                    offset
+                } else {
+                    0f
+                }
+                drawBlock(canvas, result, blockConfig, content, stackOffset)
+            }
         }
 
         return result
     }
 
-    private fun buildWatermarkLines(config: WatermarkConfig): List<String> {
-        val lines = mutableListOf<String>()
-
-        // 时间戳
-        if (config.showTimestamp) {
-            lines.add(formatTimestamp(config.timestamp))
-        }
-
-        // 位置地址
-        if (config.showLocationAddress && config.locationAddress.isNotEmpty()) {
-            lines.add(config.locationAddress)
-        }
-
-        // 经纬度
-        if (config.showLocationCoords && config.latitude != null && config.longitude != null) {
-            lines.add("纬度: ${String.format(Locale.US, "%.6f", config.latitude)}")
-            lines.add("经度: ${String.format(Locale.US, "%.6f", config.longitude)}")
-        }
-
-        // 自定义文本
-        if (config.showText && config.customText.isNotEmpty()) {
-            lines.add(config.customText)
-        }
-
-        return lines
+    /**
+     * 计算单个块的高度（用于堆叠计算）
+     */
+    private fun calculateBlockHeight(blockConfig: WatermarkBlockConfig, content: String): Float {
+        val paint = createTextPaint(blockConfig.fontSizeSp)
+        val lines = content.split("\n")
+        val padding = WatermarkStyle.PADDING * density
+        val lineHeight = paint.fontSpacing
+        return lines.size * lineHeight + padding * 2
     }
 
-    private fun createTextPaint(): Paint {
+    private fun drawBlock(
+        canvas: Canvas,
+        image: Bitmap,
+        blockConfig: WatermarkBlockConfig,
+        content: String,
+        stackOffset: Float = 0f
+    ) {
+        if (content.isEmpty()) return
+
+        val paint = createTextPaint(blockConfig.fontSizeSp)
+        val lines = content.split("\n")
+        val padding = WatermarkStyle.PADDING * density
+
+        // 计算当前块的尺寸
+        val lineHeight = paint.fontSpacing
+        val blockHeight = lines.size * lineHeight + padding * 2
+        val blockWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f + padding * 2
+
+        // 根据对齐方式计算绘制坐标
+        val (drawX, drawY) = calculatePosition(
+            blockConfig.alignment,
+            blockWidth,
+            blockHeight,
+            image.width.toFloat(),
+            image.height.toFloat(),
+            stackOffset
+        )
+
+        // 绘制半透明背景
+        val bgPaint = createBackgroundPaint()
+        val bgRect = RectF(drawX, drawY, drawX + blockWidth, drawY + blockHeight)
+        canvas.drawRoundRect(
+            bgRect,
+            WatermarkStyle.CORNER_RADIUS * density,
+            WatermarkStyle.CORNER_RADIUS * density,
+            bgPaint
+        )
+
+        // 绘制文字
+        var textY = drawY + padding + paint.textSize
+        lines.forEach { line ->
+            canvas.drawText(line, drawX + padding, textY, paint)
+            textY += lineHeight
+        }
+    }
+
+    private fun calculatePosition(
+        alignment: WatermarkAlignment,
+        blockWidth: Float,
+        blockHeight: Float,
+        imageWidth: Float,
+        imageHeight: Float,
+        stackOffset: Float = 0f
+    ): Pair<Float, Float> {
+        val margin = WatermarkStyle.MARGIN_FROM_EDGE * density
+
+        val (baseX, baseY) = when (alignment) {
+            WatermarkAlignment.TOP_LEFT -> Pair(margin, margin)
+            WatermarkAlignment.TOP -> Pair(imageWidth / 2 - blockWidth / 2, margin)
+            WatermarkAlignment.TOP_RIGHT -> Pair(imageWidth - blockWidth - margin, margin)
+            WatermarkAlignment.LEFT -> Pair(margin, imageHeight / 2 - blockHeight / 2)
+            WatermarkAlignment.CENTER -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight / 2 - blockHeight / 2)
+            WatermarkAlignment.RIGHT -> Pair(imageWidth - blockWidth - margin, imageHeight / 2 - blockHeight / 2)
+            WatermarkAlignment.BOTTOM_LEFT -> Pair(margin, imageHeight - blockHeight - margin)
+            WatermarkAlignment.BOTTOM -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight - blockHeight - margin)
+            WatermarkAlignment.BOTTOM_RIGHT -> Pair(imageWidth - blockWidth - margin, imageHeight - blockHeight - margin)
+        }
+
+        // 应用堆叠偏移：向下移动
+        return Pair(baseX, baseY + stackOffset)
+    }
+
+    private fun createTextPaint(fontSizeSp: Int): Paint {
         return Paint().apply {
             color = android.graphics.Color.WHITE
-            textSize = WatermarkStyle.FONT_SIZE * density
+            textSize = fontSizeSp * density
             isAntiAlias = true
             typeface = Typeface.DEFAULT_BOLD
             setShadowLayer(
@@ -116,23 +172,6 @@ class WatermarkComposer(private val context: Context) {
     private fun createBackgroundPaint(): Paint {
         return Paint().apply {
             color = android.graphics.Color.argb(128, 0, 0, 0) // 50% alpha black
-        }
-    }
-
-    private fun calculateBackgroundPosition(
-        bgWidth: Float,
-        bgHeight: Float,
-        imageWidth: Float,
-        imageHeight: Float,
-        position: WatermarkPosition
-    ): Pair<Float, Float> {
-        val margin = WatermarkStyle.MARGIN_FROM_EDGE * density
-
-        return when (position) {
-            WatermarkPosition.TOP_LEFT -> Pair(margin, margin)
-            WatermarkPosition.TOP_RIGHT -> Pair(imageWidth - bgWidth - margin, margin)
-            WatermarkPosition.BOTTOM_LEFT -> Pair(margin, imageHeight - bgHeight - margin)
-            WatermarkPosition.BOTTOM_RIGHT -> Pair(imageWidth - bgWidth - margin, imageHeight - bgHeight - margin)
         }
     }
 

@@ -3,7 +3,6 @@ package com.watermarkcamera.ui.camera
 import android.app.Application
 import android.content.ContentValues
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -17,14 +16,11 @@ import com.watermarkcamera.data.WatermarkPreferences
 import com.watermarkcamera.location.LocationManager
 import com.watermarkcamera.watermark.WatermarkComposer
 import com.watermarkcamera.watermark.WatermarkConfig
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
@@ -39,10 +35,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private val preferences = WatermarkPreferences(application)
 
     // 从 SharedPreferences 读取设置
-    val showTimestamp: Boolean get() = preferences.showTimestamp
-    val showLocationAddress: Boolean get() = preferences.showLocationAddress
-    val showLocationCoords: Boolean get() = preferences.showLocationCoords
-    val showCustomText: Boolean get() = preferences.showCustomText
     val customText: String get() = preferences.customText
 
     fun initialize(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
@@ -52,7 +44,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             cameraXManager = CameraXManager(getApplication(), lifecycleOwner)
             try {
                 val started = cameraXManager.startCamera(previewView)
-                _uiState.update { it.copy(isCameraReady = started) }
+                _uiState.update {
+                    it.copy(
+                        isCameraReady = started,
+                        isUsingFrontCamera = cameraXManager.isUsingFrontCamera
+                    )
+                }
 
                 // 自动获取位置
                 if (_uiState.value.hasLocationPermission) {
@@ -73,6 +70,32 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (hasLocationPermission) {
             fetchLocation()
+        }
+    }
+
+    /**
+     * 切换前后摄像头
+     */
+    fun switchCamera(previewView: PreviewView) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val started = cameraXManager.switchCamera(previewView)
+                _uiState.update {
+                    it.copy(
+                        isCameraReady = started,
+                        isUsingFrontCamera = cameraXManager.isUsingFrontCamera,
+                        isLoading = false
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "切换摄像头失败: ${e.message}"
+                    )
+                }
+            }
         }
     }
 
@@ -181,18 +204,16 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private fun composeWatermarkBitmap(originalBitmap: Bitmap): Bitmap? {
         return try {
             val locationData = _uiState.value.locationData
+            val layoutConfig = preferences.loadLayoutConfig()
+
             val watermarkConfig = WatermarkConfig(
-                showText = preferences.showCustomText && preferences.customText.isNotEmpty(),
                 customText = preferences.customText,
-                showLocationAddress = preferences.showLocationAddress && locationData != null && locationData.address.isNotEmpty(),
-                showLocationCoords = preferences.showLocationCoords && locationData != null && locationData.latitude != 0.0,
                 locationAddress = locationData?.address ?: "",
                 latitude = locationData?.latitude,
                 longitude = locationData?.longitude,
-                showTimestamp = preferences.showTimestamp,
                 timestamp = System.currentTimeMillis()
             )
-            watermarkComposer.composeWatermark(originalBitmap, watermarkConfig)
+            watermarkComposer.composeWatermark(originalBitmap, watermarkConfig, layoutConfig)
         } catch (e: Exception) {
             e.printStackTrace()
             null

@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,7 +36,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -50,8 +52,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.watermarkcamera.data.WatermarkPreferences
 import com.watermarkcamera.ui.components.LargeButton
-import com.watermarkcamera.ui.components.SecondaryButton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -66,6 +68,7 @@ fun CameraScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val preferences = remember { WatermarkPreferences(context) }
 
     val previewView = remember { PreviewView(context) }
 
@@ -176,7 +179,7 @@ fun CameraScreen(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(16.dp)
-                                .size(56.dp)
+                                .size(48.dp)
                                 .background(
                                     color = Color.Black.copy(alpha = 0.5f),
                                     shape = RoundedCornerShape(12.dp)
@@ -186,7 +189,27 @@ fun CameraScreen(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "设置",
                                 tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // 摄像头切换按钮
+                        IconButton(
+                            onClick = { viewModel.switchCamera(previewView) },
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(16.dp)
+                                .size(48.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Cameraswitch,
+                                contentDescription = "切换摄像头",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
@@ -201,9 +224,7 @@ fun CameraScreen(
                         // 位置和时间信息卡片
                         InfoCard(
                             locationData = uiState.locationData,
-                            showTimestamp = viewModel.showTimestamp,
-                            showCustomText = viewModel.showCustomText,
-                            customText = viewModel.customText
+                            onRefreshLocation = { viewModel.fetchLocation() }
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -238,10 +259,12 @@ fun CameraScreen(
 @Composable
 private fun InfoCard(
     locationData: LocationUiData?,
-    showTimestamp: Boolean,
-    showCustomText: Boolean,
-    customText: String
+    onRefreshLocation: () -> Unit
 ) {
+    val context = LocalContext.current
+    val preferences = remember { WatermarkPreferences(context) }
+    val layoutConfig = remember { preferences.loadLayoutConfig() }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -255,7 +278,7 @@ private fun InfoCard(
                 .padding(16.dp)
         ) {
             // 时间
-            if (showTimestamp) {
+            if (layoutConfig.timestamp.enabled) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -275,39 +298,63 @@ private fun InfoCard(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // 位置
+            // 位置行
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = "位置: ",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-                if (locationData?.isLoading == true) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text = locationData?.address ?: "位置不可用",
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (layoutConfig.address.enabled) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "位置: ",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                        if (locationData?.isLoading == true) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                text = locationData?.address ?: "位置不可用",
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                // 刷新按钮
+                if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
+                    IconButton(
+                        onClick = onRefreshLocation,
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "刷新位置",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 
             // 经纬度
-            if (locationData?.latitude != null && locationData.latitude != 0.0) {
+            if (layoutConfig.coords.enabled && locationData?.latitude != null && locationData.latitude != 0.0) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "纬度: ${String.format(Locale.US, "%.6f", locationData.latitude)}  经度: ${String.format(Locale.US, "%.6f", locationData.longitude)}",
@@ -317,7 +364,7 @@ private fun InfoCard(
             }
 
             // 自定义文本
-            if (showCustomText && customText.isNotEmpty()) {
+            if (layoutConfig.custom.enabled && preferences.customText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically
@@ -329,7 +376,7 @@ private fun InfoCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = customText,
+                        text = preferences.customText,
                         fontSize = 18.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
