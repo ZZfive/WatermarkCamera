@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.FormatAlignJustify
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -202,6 +205,8 @@ private fun TimestampSettings(viewModel: SettingsViewModel, uiState: SettingsUiS
         subtitle = "拍照时显示当前时间",
         enabled = block.enabled,
         onEnabledChange = { viewModel.updateTimestampEnabled(it) },
+        showBackground = block.showBackground,
+        onShowBackgroundChange = { viewModel.updateTimestampShowBackground(it) },
         alignment = block.alignment,
         onAlignmentChange = { viewModel.updateTimestampAlignment(it) },
         fontSize = block.fontSizeSp,
@@ -218,6 +223,8 @@ private fun AddressSettings(viewModel: SettingsViewModel, uiState: SettingsUiSta
         subtitle = "显示地理位置名称",
         enabled = block.enabled,
         onEnabledChange = { viewModel.updateAddressEnabled(it) },
+        showBackground = block.showBackground,
+        onShowBackgroundChange = { viewModel.updateAddressShowBackground(it) },
         alignment = block.alignment,
         onAlignmentChange = { viewModel.updateAddressAlignment(it) },
         fontSize = block.fontSizeSp,
@@ -228,17 +235,77 @@ private fun AddressSettings(viewModel: SettingsViewModel, uiState: SettingsUiSta
 @Composable
 private fun CoordsSettings(viewModel: SettingsViewModel, uiState: SettingsUiState) {
     val block = uiState.layoutConfig.coords
+    val coordsMode = uiState.layoutConfig.coordsMode
 
-    BlockSettingsContent(
-        title = "经纬度水印",
-        subtitle = "显示GPS坐标信息",
-        enabled = block.enabled,
-        onEnabledChange = { viewModel.updateCoordsEnabled(it) },
-        alignment = block.alignment,
-        onAlignmentChange = { viewModel.updateCoordsAlignment(it) },
-        fontSize = block.fontSizeSp,
-        onFontSizeChange = { viewModel.updateCoordsFontSize(it) }
-    )
+    Column {
+        BlockSettingsContent(
+            title = "经纬度水印",
+            subtitle = "显示GPS坐标信息",
+            enabled = block.enabled,
+            onEnabledChange = { viewModel.updateCoordsEnabled(it) },
+            showBackground = block.showBackground,
+            onShowBackgroundChange = { viewModel.updateCoordsShowBackground(it) },
+            alignment = block.alignment,
+            onAlignmentChange = { viewModel.updateCoordsAlignment(it) },
+            fontSize = block.fontSizeSp,
+            onFontSizeChange = { viewModel.updateCoordsFontSize(it) }
+        )
+
+        if (block.enabled) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 显示模式选择
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "显示模式",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = coordsMode == com.watermarkcamera.watermark.CoordsDisplayMode.HORIZONTAL,
+                            onClick = { viewModel.updateCoordsDisplayMode(com.watermarkcamera.watermark.CoordsDisplayMode.HORIZONTAL) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Text(
+                            text = "水平并列",
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(end = 24.dp)
+                        )
+
+                        RadioButton(
+                            selected = coordsMode == com.watermarkcamera.watermark.CoordsDisplayMode.VERTICAL,
+                            onClick = { viewModel.updateCoordsDisplayMode(com.watermarkcamera.watermark.CoordsDisplayMode.VERTICAL) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Text(
+                            text = "垂直堆叠",
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -251,6 +318,8 @@ private fun CustomSettings(viewModel: SettingsViewModel, uiState: SettingsUiStat
             subtitle = "添加自定义文字到照片",
             enabled = block.enabled,
             onEnabledChange = { viewModel.updateCustomEnabled(it) },
+            showBackground = block.showBackground,
+            onShowBackgroundChange = { viewModel.updateCustomShowBackground(it) },
             alignment = block.alignment,
             onAlignmentChange = { viewModel.updateCustomAlignment(it) },
             fontSize = block.fontSizeSp,
@@ -279,6 +348,8 @@ private fun BlockSettingsContent(
     subtitle: String,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    showBackground: Boolean,
+    onShowBackgroundChange: (Boolean) -> Unit,
     alignment: com.watermarkcamera.watermark.WatermarkAlignment,
     onAlignmentChange: (com.watermarkcamera.watermark.WatermarkAlignment) -> Unit,
     fontSize: Int,
@@ -320,6 +391,17 @@ private fun BlockSettingsContent(
             )
 
             if (enabled) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 显示背景开关
+                SettingSwitchCard(
+                    icon = Icons.Default.FormatAlignJustify,
+                    title = "显示背景",
+                    subtitle = "在文字外围显示半透明背景框",
+                    checked = showBackground,
+                    onCheckedChange = onShowBackgroundChange
+                )
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 位置选择器

@@ -6,5 +6,6 @@ package com.watermarkcamera.watermark
 data class WatermarkBlockConfig(
     val enabled: Boolean = true,
     val alignment: WatermarkAlignment = WatermarkAlignment.BOTTOM_LEFT,
-    val fontSizeSp: Int = 24  // 字体大小 12-48sp
+    val fontSizeSp: Int = 24,  // 字体大小 12-48sp
+    val showBackground: Boolean = true  // 是否显示背景框
 )

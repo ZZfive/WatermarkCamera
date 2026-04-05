@@ -23,5 +23,6 @@ data class WatermarkLayoutConfig(
         enabled = true,
         alignment = WatermarkAlignment.BOTTOM_RIGHT,
         fontSizeSp = 22
-    )
+    ),
+    val coordsMode: CoordsDisplayMode = CoordsDisplayMode.HORIZONTAL
 )

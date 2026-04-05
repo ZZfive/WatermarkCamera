@@ -2,6 +2,7 @@ package com.watermarkcamera.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.watermarkcamera.watermark.CoordsDisplayMode
 import com.watermarkcamera.watermark.WatermarkAlignment
 import com.watermarkcamera.watermark.WatermarkBlockConfig
 import com.watermarkcamera.watermark.WatermarkLayoutConfig
@@ -25,6 +26,11 @@ class WatermarkPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_SAVE_ORIGINAL, false)
         set(value) = prefs.edit().putBoolean(KEY_SAVE_ORIGINAL, value).apply()
 
+    // ========== 经纬度显示模式 ==========
+    var coordsDisplayMode: CoordsDisplayMode
+        get() = CoordsDisplayMode.entries[prefs.getInt(KEY_COORDS_DISPLAY_MODE, 0)]
+        set(value) = prefs.edit().putInt(KEY_COORDS_DISPLAY_MODE, value.ordinal).apply()
+
     // ========== 时间块设置 ==========
     var timestampEnabled: Boolean
         get() = prefs.getBoolean(KEY_TIMESTAMP_ENABLED, true)
@@ -37,6 +43,10 @@ class WatermarkPreferences(context: Context) {
     var timestampFontSize: Int
         get() = prefs.getInt(KEY_TIMESTAMP_FONT_SIZE, 24)
         set(value) = prefs.edit().putInt(KEY_TIMESTAMP_FONT_SIZE, value).apply()
+
+    var timestampShowBackground: Boolean
+        get() = prefs.getBoolean(KEY_TIMESTAMP_SHOW_BG, true)
+        set(value) = prefs.edit().putBoolean(KEY_TIMESTAMP_SHOW_BG, value).apply()
 
     // ========== 地址块设置 ==========
     var addressEnabled: Boolean
@@ -51,6 +61,10 @@ class WatermarkPreferences(context: Context) {
         get() = prefs.getInt(KEY_ADDRESS_FONT_SIZE, 20)
         set(value) = prefs.edit().putInt(KEY_ADDRESS_FONT_SIZE, value).apply()
 
+    var addressShowBackground: Boolean
+        get() = prefs.getBoolean(KEY_ADDRESS_SHOW_BG, true)
+        set(value) = prefs.edit().putBoolean(KEY_ADDRESS_SHOW_BG, value).apply()
+
     // ========== 经纬度块设置 ==========
     var coordsEnabled: Boolean
         get() = prefs.getBoolean(KEY_COORDS_ENABLED, true)
@@ -63,6 +77,10 @@ class WatermarkPreferences(context: Context) {
     var coordsFontSize: Int
         get() = prefs.getInt(KEY_COORDS_FONT_SIZE, 16)
         set(value) = prefs.edit().putInt(KEY_COORDS_FONT_SIZE, value).apply()
+
+    var coordsShowBackground: Boolean
+        get() = prefs.getBoolean(KEY_COORDS_SHOW_BG, true)
+        set(value) = prefs.edit().putBoolean(KEY_COORDS_SHOW_BG, value).apply()
 
     // ========== 自定义文本块设置 ==========
     var customEnabled: Boolean
@@ -77,6 +95,10 @@ class WatermarkPreferences(context: Context) {
         get() = prefs.getInt(KEY_CUSTOM_FONT_SIZE, 22)
         set(value) = prefs.edit().putInt(KEY_CUSTOM_FONT_SIZE, value).apply()
 
+    var customShowBackground: Boolean
+        get() = prefs.getBoolean(KEY_CUSTOM_SHOW_BG, true)
+        set(value) = prefs.edit().putBoolean(KEY_CUSTOM_SHOW_BG, value).apply()
+
     /**
      * 加载完整布局配置
      */
@@ -85,23 +107,28 @@ class WatermarkPreferences(context: Context) {
             timestamp = WatermarkBlockConfig(
                 enabled = timestampEnabled,
                 alignment = timestampAlignment,
-                fontSizeSp = timestampFontSize
+                fontSizeSp = timestampFontSize,
+                showBackground = timestampShowBackground
             ),
             address = WatermarkBlockConfig(
                 enabled = addressEnabled,
                 alignment = addressAlignment,
-                fontSizeSp = addressFontSize
+                fontSizeSp = addressFontSize,
+                showBackground = addressShowBackground
             ),
             coords = WatermarkBlockConfig(
                 enabled = coordsEnabled,
                 alignment = coordsAlignment,
-                fontSizeSp = coordsFontSize
+                fontSizeSp = coordsFontSize,
+                showBackground = coordsShowBackground
             ),
             custom = WatermarkBlockConfig(
                 enabled = customEnabled,
                 alignment = customAlignment,
-                fontSizeSp = customFontSize
-            )
+                fontSizeSp = customFontSize,
+                showBackground = customShowBackground
+            ),
+            coordsMode = coordsDisplayMode
         )
     }
 
@@ -112,43 +139,54 @@ class WatermarkPreferences(context: Context) {
         timestampEnabled = config.timestamp.enabled
         timestampAlignment = config.timestamp.alignment
         timestampFontSize = config.timestamp.fontSizeSp
+        timestampShowBackground = config.timestamp.showBackground
 
         addressEnabled = config.address.enabled
         addressAlignment = config.address.alignment
         addressFontSize = config.address.fontSizeSp
+        addressShowBackground = config.address.showBackground
 
         coordsEnabled = config.coords.enabled
         coordsAlignment = config.coords.alignment
         coordsFontSize = config.coords.fontSizeSp
+        coordsShowBackground = config.coords.showBackground
 
         customEnabled = config.custom.enabled
         customAlignment = config.custom.alignment
         customFontSize = config.custom.fontSizeSp
+        customShowBackground = config.custom.showBackground
+
+        coordsDisplayMode = config.coordsMode
     }
 
     companion object {
         private const val PREFS_NAME = "watermark_prefs"
         private const val KEY_CUSTOM_TEXT = "custom_text"
         private const val KEY_SAVE_ORIGINAL = "save_original"
+        private const val KEY_COORDS_DISPLAY_MODE = "coords_display_mode"
 
         // Timestamp
         private const val KEY_TIMESTAMP_ENABLED = "timestamp_enabled"
         private const val KEY_TIMESTAMP_ALIGNMENT = "timestamp_alignment"
         private const val KEY_TIMESTAMP_FONT_SIZE = "timestamp_font_size"
+        private const val KEY_TIMESTAMP_SHOW_BG = "timestamp_show_bg"
 
         // Address
         private const val KEY_ADDRESS_ENABLED = "address_enabled"
         private const val KEY_ADDRESS_ALIGNMENT = "address_alignment"
         private const val KEY_ADDRESS_FONT_SIZE = "address_font_size"
+        private const val KEY_ADDRESS_SHOW_BG = "address_show_bg"
 
         // Coords
         private const val KEY_COORDS_ENABLED = "coords_enabled"
         private const val KEY_COORDS_ALIGNMENT = "coords_alignment"
         private const val KEY_COORDS_FONT_SIZE = "coords_font_size"
+        private const val KEY_COORDS_SHOW_BG = "coords_show_bg"
 
         // Custom
         private const val KEY_CUSTOM_ENABLED = "custom_enabled"
         private const val KEY_CUSTOM_ALIGNMENT = "custom_alignment"
         private const val KEY_CUSTOM_FONT_SIZE = "custom_font_size"
+        private const val KEY_CUSTOM_SHOW_BG = "custom_show_bg"
     }
 }

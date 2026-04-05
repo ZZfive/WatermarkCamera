@@ -40,7 +40,12 @@ class WatermarkComposer(private val context: Context) {
             enabledBlocks.add(layout.address to config.locationAddress)
         }
         if (layout.coords.enabled && config.latitude != null && config.longitude != null) {
-            val coordsText = "纬度: ${String.format(Locale.US, "%.6f", config.latitude)}\n经度: ${String.format(Locale.US, "%.6f", config.longitude)}"
+            val coordsText = when (layout.coordsMode) {
+                CoordsDisplayMode.HORIZONTAL ->
+                    "纬度: ${String.format(Locale.US, "%.6f", config.latitude)} / 经度: ${String.format(Locale.US, "%.6f", config.longitude)}"
+                CoordsDisplayMode.VERTICAL ->
+                    "纬度: ${String.format(Locale.US, "%.6f", config.latitude)}\n经度: ${String.format(Locale.US, "%.6f", config.longitude)}"
+            }
             enabledBlocks.add(layout.coords to coordsText)
         }
         if (layout.custom.enabled && config.customText.isNotEmpty()) {
@@ -54,10 +59,9 @@ class WatermarkComposer(private val context: Context) {
             blocks.forEachIndexed { index, (blockConfig, content) ->
                 // 计算堆叠偏移：同一位置的块依次向下排列
                 val stackOffset = if (index > 0) {
-                    // 获取前面所有块的总高度 + 间距
                     var offset = 0f
                     for (i in 0 until index) {
-                        offset += calculateBlockHeight(blocks[i].first, blocks[i].second)
+                        offset += calculateBlockContentHeight(blocks[i].first, blocks[i].second)
                         offset += WatermarkStyle.STACK_SPACING * density
                     }
                     offset
@@ -72,7 +76,16 @@ class WatermarkComposer(private val context: Context) {
     }
 
     /**
-     * 计算单个块的高度（用于堆叠计算）
+     * 计算单个块的内容高度（不含padding，用于堆叠计算）
+     */
+    private fun calculateBlockContentHeight(blockConfig: WatermarkBlockConfig, content: String): Float {
+        val paint = createTextPaint(blockConfig.fontSizeSp)
+        val lines = content.split("\n")
+        return lines.size * paint.fontSpacing
+    }
+
+    /**
+     * 计算单个块的完整高度（含padding）
      */
     private fun calculateBlockHeight(blockConfig: WatermarkBlockConfig, content: String): Float {
         val paint = createTextPaint(blockConfig.fontSizeSp)
@@ -98,7 +111,8 @@ class WatermarkComposer(private val context: Context) {
         // 计算当前块的尺寸
         val lineHeight = paint.fontSpacing
         val blockHeight = lines.size * lineHeight + padding * 2
-        val blockWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f + padding * 2
+        val maxLineWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f
+        val blockWidth = maxLineWidth + padding * 2
 
         // 根据对齐方式计算绘制坐标
         val (drawX, drawY) = calculatePosition(
@@ -110,21 +124,26 @@ class WatermarkComposer(private val context: Context) {
             stackOffset
         )
 
-        // 绘制半透明背景
-        val bgPaint = createBackgroundPaint()
-        val bgRect = RectF(drawX, drawY, drawX + blockWidth, drawY + blockHeight)
-        canvas.drawRoundRect(
-            bgRect,
-            WatermarkStyle.CORNER_RADIUS * density,
-            WatermarkStyle.CORNER_RADIUS * density,
-            bgPaint
-        )
+        // 绘制半透明背景（如果启用）
+        if (blockConfig.showBackground) {
+            val bgPaint = createBackgroundPaint()
+            val bgRect = RectF(drawX, drawY, drawX + blockWidth, drawY + blockHeight)
+            canvas.drawRoundRect(
+                bgRect,
+                WatermarkStyle.CORNER_RADIUS * density,
+                WatermarkStyle.CORNER_RADIUS * density,
+                bgPaint
+            )
+        }
 
-        // 绘制文字
-        var textY = drawY + padding + paint.textSize
+        // 绘制文字 - 使用 baseline 精确定位
+        // baselineY = drawY + padding - paint.ascent()
+        // paint.ascent() 是负值，所以 - paint.ascent() 相当于 + |paint.ascent()|
+        val baselineY = drawY + padding - paint.ascent()
+        var currentY = baselineY
         lines.forEach { line ->
-            canvas.drawText(line, drawX + padding, textY, paint)
-            textY += lineHeight
+            canvas.drawText(line, drawX + padding, currentY, paint)
+            currentY += lineHeight
         }
     }
 

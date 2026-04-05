@@ -3,6 +3,7 @@ package com.watermarkcamera.ui.settings
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.watermarkcamera.data.WatermarkPreferences
+import com.watermarkcamera.watermark.CoordsDisplayMode
 import com.watermarkcamera.watermark.WatermarkAlignment
 import com.watermarkcamera.watermark.WatermarkBlockConfig
 import com.watermarkcamera.watermark.WatermarkLayoutConfig
@@ -58,6 +59,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.timestampFontSize = fontSize
     }
 
+    fun updateTimestampShowBackground(show: Boolean) {
+        val newConfig = _uiState.value.layoutConfig.timestamp.copy(showBackground = show)
+        updateLayoutConfig(WatermarkBlockType.TIMESTAMP, newConfig)
+        preferences.timestampShowBackground = show
+    }
+
     // ========== 地址块更新 ==========
     fun updateAddressEnabled(enabled: Boolean) {
         val newConfig = _uiState.value.layoutConfig.address.copy(enabled = enabled)
@@ -75,6 +82,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val newConfig = _uiState.value.layoutConfig.address.copy(fontSizeSp = fontSize)
         updateLayoutConfig(WatermarkBlockType.ADDRESS, newConfig)
         preferences.addressFontSize = fontSize
+    }
+
+    fun updateAddressShowBackground(show: Boolean) {
+        val newConfig = _uiState.value.layoutConfig.address.copy(showBackground = show)
+        updateLayoutConfig(WatermarkBlockType.ADDRESS, newConfig)
+        preferences.addressShowBackground = show
     }
 
     // ========== 经纬度块更新 ==========
@@ -96,6 +109,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         preferences.coordsFontSize = fontSize
     }
 
+    fun updateCoordsShowBackground(show: Boolean) {
+        val newConfig = _uiState.value.layoutConfig.coords.copy(showBackground = show)
+        updateLayoutConfig(WatermarkBlockType.COORDS, newConfig)
+        preferences.coordsShowBackground = show
+    }
+
     // ========== 自定义文本块更新 ==========
     fun updateCustomEnabled(enabled: Boolean) {
         val newConfig = _uiState.value.layoutConfig.custom.copy(enabled = enabled)
@@ -113,6 +132,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val newConfig = _uiState.value.layoutConfig.custom.copy(fontSizeSp = fontSize)
         updateLayoutConfig(WatermarkBlockType.CUSTOM, newConfig)
         preferences.customFontSize = fontSize
+    }
+
+    fun updateCustomShowBackground(show: Boolean) {
+        val newConfig = _uiState.value.layoutConfig.custom.copy(showBackground = show)
+        updateLayoutConfig(WatermarkBlockType.CUSTOM, newConfig)
+        preferences.customShowBackground = show
+    }
+
+    // ========== 经纬度显示模式 ==========
+    fun updateCoordsDisplayMode(mode: CoordsDisplayMode) {
+        _uiState.update { it.copy(layoutConfig = it.layoutConfig.copy(coordsMode = mode)) }
+        preferences.coordsDisplayMode = mode
     }
 
     // ========== 全局设置 ==========

@@ -17,9 +17,9 @@ object WatermarkStyle {
 
     // 尺寸
     val CORNER_RADIUS = 12f
-    val PADDING = 24f
+    val PADDING = 32f  // 增加内边距，让文字不贴边框
     val MARGIN_FROM_EDGE = 32f
-    val STACK_SPACING = 8f  // 同一位置堆叠时的间距
+    val STACK_SPACING = 16f  // 增加堆叠间距，避免重叠
 
     // 文字样式
     val TEXT_SHADOW_RADIUS = 2f
