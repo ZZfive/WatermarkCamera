@@ -16,11 +16,13 @@ import com.watermarkcamera.data.WatermarkPreferences
 import com.watermarkcamera.location.LocationManager
 import com.watermarkcamera.watermark.WatermarkComposer
 import com.watermarkcamera.watermark.WatermarkConfig
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -151,7 +153,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun takePicture() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(isLoading = true) }
 
             try {
@@ -168,34 +170,42 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                             saveBitmapToGallery(originalBitmap, "Original_")
                         }
 
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                capturedPhotoUri = watermarkedUri
-                            )
+                        withContext(Dispatchers.Main) {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    capturedPhotoUri = watermarkedUri
+                                )
+                            }
                         }
                     } else {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                errorMessage = "水印合成失败"
-                            )
+                        withContext(Dispatchers.Main) {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    errorMessage = "水印合成失败"
+                                )
+                            }
                         }
                     }
                 } else {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = "拍照失败"
-                        )
+                    withContext(Dispatchers.Main) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = "拍照失败"
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "拍照失败: ${e.message}"
-                    )
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "拍照失败: ${e.message}"
+                        )
+                    }
                 }
             }
         }

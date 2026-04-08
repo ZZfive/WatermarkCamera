@@ -19,6 +19,10 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * CameraX 管理器
+ *
+ * 优化点：
+ * - ByteArray 缓冲区复用，减少 GC
+ * - 及时回收旋转/翻转后的 bitmap
  */
 class CameraXManager(
     private val context: Context,
@@ -29,6 +33,9 @@ class CameraXManager(
     private var preview: Preview? = null
     private var currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     private var previewView: PreviewView? = null
+
+    // ByteArray 缓冲区复用，减少每帧分配
+    private var reusableByteArray: ByteArray? = null
 
     /**
      * 当前是否使用前置摄像头
@@ -109,7 +116,11 @@ class CameraXManager(
                         var bitmap = imageProxyToBitmap(imageProxy)
                         // 前置摄像头需要镜像翻转
                         if (isUsingFrontCamera && bitmap != null) {
-                            bitmap = flipHorizontally(bitmap)
+                            val flipped = flipHorizontally(bitmap)
+                            if (flipped !== bitmap) {
+                                bitmap.recycle()
+                            }
+                            bitmap = flipped
                         }
                         imageProxy.close()
                         continuation.resume(bitmap)
@@ -128,10 +139,17 @@ class CameraXManager(
      */
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
         val buffer = imageProxy.planes[0].buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
+        val size = buffer.remaining()
 
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        // 复用 ByteArray 缓冲区，避免每帧分配
+        val bytes = if (reusableByteArray?.size ?: 0 >= size) {
+            reusableByteArray!!
+        } else {
+            ByteArray(size.also { reusableByteArray = ByteArray(it) })
+        }
+        buffer.get(bytes, 0, size)
+
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, size) ?: return null
 
         // 根据旋转角度校正
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees
@@ -140,8 +158,11 @@ class CameraXManager(
                 postRotate(rotationDegrees.toFloat())
             }
             val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-            // 保留原始 bitmap 的密度
             rotated.density = bitmap.density
+            // 旋转后及时回收原 bitmap
+            if (rotated !== bitmap) {
+                bitmap.recycle()
+            }
             rotated
         } else {
             bitmap
@@ -156,7 +177,6 @@ class CameraXManager(
             preScale(-1f, 1f)
         }
         val flipped = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        // 保留原始 bitmap 的密度，避免水印大小不一致
         flipped.density = bitmap.density
         return flipped
     }
