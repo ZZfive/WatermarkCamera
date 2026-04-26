@@ -8,6 +8,8 @@ import android.location.LocationManager as AndroidLocationManager
 import android.os.Bundle
 import android.os.Looper
 import android.util.Log
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -55,11 +57,11 @@ private data class RawLocation(
  * 位置管理器
  *
  * 采用多级回退策略，优先保证国产手机/老旧手机定位成功率：
- * 1. FusedLocationProvider 单次请求（快且准）
- * 2. FusedLocationProvider 监听更新（更可靠）
- * 3. 系统 GPS 定位（不依赖 GMS）
- * 4. 系统网络定位（室内可用）
- * 5. 最后已知位置（兜底）
+ * 0. 最后已知位置（最快，不阻塞）
+ * 1. FusedLocation 单次请求（仅 GMS 可用时）
+ * 2. 系统 GPS 定位（不依赖 GMS）
+ * 3. 系统网络定位（室内可用）
+ * 4. FusedLocation 监听更新（更慢，放最后）
  */
 class LocationManager(private val context: Context) {
 
@@ -72,10 +74,10 @@ class LocationManager(private val context: Context) {
 
     companion object {
         private const val TAG = "LocationManager"
-        private const val SINGLE_REQUEST_TIMEOUT_MS = 10000L
-        private const val LISTEN_TIMEOUT_MS = 15000L
-        private const val SYSTEM_LISTEN_TIMEOUT_MS = 15000L
-        private const val LAST_LOCATION_MAX_AGE_MS = 30 * 60 * 1000L // 放宽到30分钟
+        private const val SINGLE_REQUEST_TIMEOUT_MS = 5000L
+        private const val LISTEN_TIMEOUT_MS = 8000L
+        private const val SYSTEM_LISTEN_TIMEOUT_MS = 10000L
+        private const val LAST_LOCATION_MAX_AGE_MS = 5 * 60 * 1000L // 5分钟内的最后已知位置可接受
     }
 
     private fun isLocationEnabled(): Boolean {
@@ -129,63 +131,84 @@ class LocationManager(private val context: Context) {
     }
 
     /**
+     * 检查 Google Play Services 是否可用
+     */
+    private fun isGmsAvailable(): Boolean {
+        return GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
+    }
+
+    /**
      * 尝试所有定位策略，按优先级从高到低
+     *
+     * 优化策略（避免 ANR、提升国产机成功率）：
+     * 0. 最后已知位置（立即返回，不阻塞）
+     * 1. FusedLocation 单次请求（仅 GMS 可用时）
+     * 2. 系统 GPS 定位（不依赖 GMS）
+     * 3. 系统网络定位（室内可用）
+     * 4. FusedLocation 监听更新（更可靠但更慢，放在后面）
      */
     @SuppressLint("MissingPermission")
     private suspend fun tryAllStrategies(): RawLocation? {
-        // 策略1: FusedLocation 单次请求（最快最准）
+        // 策略0: 最后已知位置（最快，不阻塞等待）
         try {
-            val location = requestFusedSingleLocation()
+            val location = tryGetLastLocation()
             if (location != null) {
-                Log.d(TAG, "Strategy 1 success: FusedLocation single request")
+                Log.d(TAG, "Strategy 0 success: Last known location")
                 return location
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Strategy 1 failed: ${e.message}")
+            Log.w(TAG, "Strategy 0 failed: ${e.message}")
         }
 
-        // 策略2: FusedLocation 监听更新（更可靠）
+        // 策略1: FusedLocation 单次请求（仅 GMS 可用时尝试）
+        if (isGmsAvailable()) {
+            try {
+                val location = requestFusedSingleLocation()
+                if (location != null) {
+                    Log.d(TAG, "Strategy 1 success: FusedLocation single request")
+                    return location
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Strategy 1 failed: ${e.message}")
+            }
+        } else {
+            Log.d(TAG, "GMS not available, skipping FusedLocation strategies")
+        }
+
+        // 策略2: 系统 GPS 定位（不依赖 GMS）
         try {
-            val location = requestFusedLocationUpdates()
+            val location = requestSystemGpsLocation()
             if (location != null) {
-                Log.d(TAG, "Strategy 2 success: FusedLocation updates")
+                Log.d(TAG, "Strategy 2 success: System GPS")
                 return location
             }
         } catch (e: Exception) {
             Log.w(TAG, "Strategy 2 failed: ${e.message}")
         }
 
-        // 策略3: 系统 GPS 定位（不依赖 GMS）
+        // 策略3: 系统网络定位（室内可用）
         try {
-            val location = requestSystemGpsLocation()
+            val location = requestSystemNetworkLocation()
             if (location != null) {
-                Log.d(TAG, "Strategy 3 success: System GPS")
+                Log.d(TAG, "Strategy 3 success: System Network")
                 return location
             }
         } catch (e: Exception) {
             Log.w(TAG, "Strategy 3 failed: ${e.message}")
         }
 
-        // 策略4: 系统网络定位（室内可用）
-        try {
-            val location = requestSystemNetworkLocation()
-            if (location != null) {
-                Log.d(TAG, "Strategy 4 success: System Network")
-                return location
+        // 策略4: FusedLocation 监听更新（更慢，放最后）
+        if (isGmsAvailable()) {
+            try {
+                val location = requestFusedLocationUpdates()
+                if (location != null) {
+                    Log.d(TAG, "Strategy 4 success: FusedLocation updates")
+                    return location
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Strategy 4 failed: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Strategy 4 failed: ${e.message}")
-        }
-
-        // 策略5: 最后已知位置（兜底，放宽时间限制）
-        try {
-            val location = tryGetLastLocation()
-            if (location != null) {
-                Log.d(TAG, "Strategy 5 success: Last known location")
-                return location
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Strategy 5 failed: ${e.message}")
         }
 
         return null

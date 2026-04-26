@@ -103,7 +103,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun fetchLocation() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             _uiState.update {
                 it.copy(
                     locationData = it.locationData?.copy(

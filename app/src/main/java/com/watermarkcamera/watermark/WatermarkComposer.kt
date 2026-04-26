@@ -54,6 +54,11 @@ class WatermarkComposer(private val context: Context) {
         }
         val canvas = Canvas(result)
 
+        // 根据图片尺寸计算缩放因子，确保前后摄像头水印视觉大小一致
+        // 以前后摄常见的参考尺寸(4000)为基准，按图片实际尺寸缩放
+        val referenceDimension = 4000f
+        val imageScale = minOf(result.width, result.height) / referenceDimension
+
         // 收集所有启用的块及其内容
         val enabledBlocks = mutableListOf<Pair<WatermarkBlockConfig, List<String>>>()
 
@@ -82,15 +87,15 @@ class WatermarkComposer(private val context: Context) {
         alignedBlocks.forEach { (_, blocks) ->
             // 预计算所有 block 高度，避免 O(n²) 重复计算
             val heights = blocks.map { (blockConfig, lines) ->
-                calculateBlockHeight(blockConfig, lines)
+                calculateBlockHeight(blockConfig, lines, imageScale)
             }
 
             // 累积偏移量 O(n) 而非 O(n²)
             var cumulativeOffset = 0f
             blocks.forEachIndexed { index, (blockConfig, lines) ->
-                drawBlock(canvas, result, blockConfig, lines, cumulativeOffset)
+                drawBlock(canvas, result, blockConfig, lines, cumulativeOffset, imageScale)
                 if (index < blocks.lastIndex) {
-                    cumulativeOffset += heights[index] + stackSpacing
+                    cumulativeOffset += heights[index] + stackSpacing * imageScale
                 }
             }
         }
@@ -101,10 +106,10 @@ class WatermarkComposer(private val context: Context) {
     /**
      * 计算单个块的完整高度（含padding）
      */
-    private fun calculateBlockHeight(blockConfig: WatermarkBlockConfig, lines: List<String>): Float {
-        val paint = getTextPaint(blockConfig.fontSizeSp)
+    private fun calculateBlockHeight(blockConfig: WatermarkBlockConfig, lines: List<String>, imageScale: Float): Float {
+        val paint = getTextPaint(blockConfig.fontSizeSp, imageScale)
         val lineHeight = paint.fontSpacing
-        return lines.size * lineHeight + padding * 2
+        return lines.size * lineHeight + padding * imageScale * 2
     }
 
     private fun drawBlock(
@@ -112,15 +117,17 @@ class WatermarkComposer(private val context: Context) {
         image: Bitmap,
         blockConfig: WatermarkBlockConfig,
         lines: List<String>,
-        stackOffset: Float = 0f
+        stackOffset: Float = 0f,
+        imageScale: Float = 1f
     ) {
         if (lines.isEmpty()) return
 
-        val paint = getTextPaint(blockConfig.fontSizeSp)
+        val paint = getTextPaint(blockConfig.fontSizeSp, imageScale)
         val lineHeight = paint.fontSpacing
-        val blockHeight = lines.size * lineHeight + padding * 2
+        val scaledPadding = padding * imageScale
+        val blockHeight = lines.size * lineHeight + scaledPadding * 2
         val maxLineWidth = lines.maxOfOrNull { paint.measureText(it) } ?: 0f
-        val blockWidth = maxLineWidth + padding * 2
+        val blockWidth = maxLineWidth + scaledPadding * 2
 
         // 根据对齐方式计算绘制坐标
         val (drawX, drawY) = calculatePosition(
@@ -129,21 +136,23 @@ class WatermarkComposer(private val context: Context) {
             blockHeight,
             image.width.toFloat(),
             image.height.toFloat(),
-            stackOffset
+            stackOffset,
+            imageScale
         )
 
         // 绘制半透明背景（如果启用）
         if (blockConfig.showBackground) {
             val bgPaint = getBackgroundPaint()
+            val scaledCornerRadius = cornerRadius * imageScale
             val bgRect = RectF(drawX, drawY, drawX + blockWidth, drawY + blockHeight)
-            canvas.drawRoundRect(bgRect, cornerRadius, cornerRadius, bgPaint)
+            canvas.drawRoundRect(bgRect, scaledCornerRadius, scaledCornerRadius, bgPaint)
         }
 
         // 绘制文字 - 使用 baseline 精确定位
-        val baselineY = drawY + padding - paint.ascent()
+        val baselineY = drawY + scaledPadding - paint.ascent()
         var currentY = baselineY
         lines.forEach { line ->
-            canvas.drawText(line, drawX + padding, currentY, paint)
+            canvas.drawText(line, drawX + scaledPadding, currentY, paint)
             currentY += lineHeight
         }
     }
@@ -154,18 +163,20 @@ class WatermarkComposer(private val context: Context) {
         blockHeight: Float,
         imageWidth: Float,
         imageHeight: Float,
-        stackOffset: Float = 0f
+        stackOffset: Float = 0f,
+        imageScale: Float = 1f
     ): Pair<Float, Float> {
+        val scaledMargin = marginFromEdge * imageScale
         val (baseX, baseY) = when (alignment) {
-            WatermarkAlignment.TOP_LEFT -> Pair(marginFromEdge, marginFromEdge)
-            WatermarkAlignment.TOP -> Pair(imageWidth / 2 - blockWidth / 2, marginFromEdge)
-            WatermarkAlignment.TOP_RIGHT -> Pair(imageWidth - blockWidth - marginFromEdge, marginFromEdge)
-            WatermarkAlignment.LEFT -> Pair(marginFromEdge, imageHeight / 2 - blockHeight / 2)
+            WatermarkAlignment.TOP_LEFT -> Pair(scaledMargin, scaledMargin)
+            WatermarkAlignment.TOP -> Pair(imageWidth / 2 - blockWidth / 2, scaledMargin)
+            WatermarkAlignment.TOP_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, scaledMargin)
+            WatermarkAlignment.LEFT -> Pair(scaledMargin, imageHeight / 2 - blockHeight / 2)
             WatermarkAlignment.CENTER -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight / 2 - blockHeight / 2)
-            WatermarkAlignment.RIGHT -> Pair(imageWidth - blockWidth - marginFromEdge, imageHeight / 2 - blockHeight / 2)
-            WatermarkAlignment.BOTTOM_LEFT -> Pair(marginFromEdge, imageHeight - blockHeight - marginFromEdge)
-            WatermarkAlignment.BOTTOM -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight - blockHeight - marginFromEdge)
-            WatermarkAlignment.BOTTOM_RIGHT -> Pair(imageWidth - blockWidth - marginFromEdge, imageHeight - blockHeight - marginFromEdge)
+            WatermarkAlignment.RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight / 2 - blockHeight / 2)
+            WatermarkAlignment.BOTTOM_LEFT -> Pair(scaledMargin, imageHeight - blockHeight - scaledMargin)
+            WatermarkAlignment.BOTTOM -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight - blockHeight - scaledMargin)
+            WatermarkAlignment.BOTTOM_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight - blockHeight - scaledMargin)
         }
 
         // 应用堆叠偏移：向下移动
@@ -175,17 +186,17 @@ class WatermarkComposer(private val context: Context) {
     /**
      * 获取缓存的 Text Paint，避免重复创建
      */
-    private fun getTextPaint(fontSizeSp: Int): Paint {
+    private fun getTextPaint(fontSizeSp: Int, imageScale: Float = 1f): Paint {
         return paintCache.getOrPut(fontSizeSp) {
             Paint().apply {
                 color = Color.WHITE
-                textSize = fontSizeSp * density
+                textSize = fontSizeSp * density * imageScale
                 isAntiAlias = true
                 typeface = Typeface.DEFAULT_BOLD
                 setShadowLayer(
-                    WatermarkStyle.TEXT_SHADOW_RADIUS * density,
-                    2f * density,
-                    2f * density,
+                    WatermarkStyle.TEXT_SHADOW_RADIUS * density * imageScale,
+                    2f * density * imageScale,
+                    2f * density * imageScale,
                     Color.BLACK
                 )
             }
