@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -68,36 +67,37 @@ fun CameraScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val preferences = remember { WatermarkPreferences(context) }
 
     val previewView = remember { PreviewView(context) }
 
-    // 权限申请
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val cameraGranted = permissions[Manifest.permission.CAMERA] == true
         val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         viewModel.onPermissionResult(cameraGranted, locationGranted)
     }
 
-    // 检查权限
     fun checkAndRequestPermissions() {
         val cameraPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-        val locationPermission = ContextCompat.checkSelfPermission(
+        val fineLocationPermission = ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
+        val coarseLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        val hasLocationPermission = fineLocationPermission == PackageManager.PERMISSION_GRANTED ||
+            coarseLocationPermission == PackageManager.PERMISSION_GRANTED
 
         viewModel.onPermissionResult(
             hasCameraPermission = cameraPermission == PackageManager.PERMISSION_GRANTED,
-            hasLocationPermission = locationPermission == PackageManager.PERMISSION_GRANTED
+            hasLocationPermission = hasLocationPermission
         )
 
-        if (cameraPermission != PackageManager.PERMISSION_GRANTED ||
-            locationPermission != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (cameraPermission != PackageManager.PERMISSION_GRANTED || !hasLocationPermission) {
             permissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.CAMERA,
@@ -108,14 +108,12 @@ fun CameraScreen(
         }
     }
 
-    // 初始化相机
     LaunchedEffect(uiState.hasCameraPermission) {
         if (uiState.hasCameraPermission) {
             viewModel.initialize(lifecycleOwner, previewView)
         }
     }
 
-    // 显示错误
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -123,7 +121,6 @@ fun CameraScreen(
         }
     }
 
-    // 拍照成功，跳转预览
     LaunchedEffect(uiState.capturedPhotoUri) {
         uiState.capturedPhotoUri?.let { uri ->
             onNavigateToPreview(uri.toString())
@@ -131,7 +128,6 @@ fun CameraScreen(
         }
     }
 
-    // 首次加载检查权限
     LaunchedEffect(Unit) {
         checkAndRequestPermissions()
     }
@@ -153,16 +149,11 @@ fun CameraScreen(
                 .padding(paddingValues)
         ) {
             if (!uiState.hasCameraPermission) {
-                // 无相机权限界面
                 PermissionRequestContent(
                     onRequestPermission = { checkAndRequestPermissions() }
                 )
             } else {
-                // 相机预览
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // 相机预览区域
+                Column(modifier = Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -173,7 +164,6 @@ fun CameraScreen(
                             modifier = Modifier.fillMaxSize()
                         )
 
-                        // 设置按钮
                         IconButton(
                             onClick = onNavigateToSettings,
                             modifier = Modifier
@@ -193,7 +183,6 @@ fun CameraScreen(
                             )
                         }
 
-                        // 摄像头切换按钮
                         IconButton(
                             onClick = { viewModel.switchCamera(previewView) },
                             modifier = Modifier
@@ -214,14 +203,12 @@ fun CameraScreen(
                         }
                     }
 
-                    // 底部信息区域
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surface)
                             .padding(16.dp)
                     ) {
-                        // 位置和时间信息卡片
                         InfoCard(
                             locationData = uiState.locationData,
                             onRefreshLocation = { viewModel.fetchLocation() }
@@ -229,7 +216,6 @@ fun CameraScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // 拍照按钮
                         if (uiState.isLoading) {
                             Box(
                                 modifier = Modifier
@@ -263,7 +249,7 @@ private fun InfoCard(
 ) {
     val context = LocalContext.current
     val preferences = remember { WatermarkPreferences(context) }
-    val layoutConfig = remember { preferences.loadLayoutConfig() }
+    val layoutConfig = preferences.loadLayoutConfig()
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -277,11 +263,8 @@ private fun InfoCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // 时间
             if (layoutConfig.timestamp.enabled) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "时间: ",
                         fontSize = 18.sp,
@@ -298,7 +281,6 @@ private fun InfoCard(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // 位置行
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -329,7 +311,11 @@ private fun InfoCard(
                             )
                         } else {
                             Text(
-                                text = locationData?.address ?: "位置不可用",
+                                text = when {
+                                    locationData?.hasAddress() == true -> locationData.address.orEmpty()
+                                    locationData?.hasCoordinates() == true -> "地址解析失败"
+                                    else -> locationData?.statusMessage ?: "位置不可用"
+                                },
                                 fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -337,7 +323,6 @@ private fun InfoCard(
                     }
                 }
 
-                // 刷新按钮
                 if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
                     IconButton(
                         onClick = onRefreshLocation,
@@ -353,22 +338,27 @@ private fun InfoCard(
                 }
             }
 
-            // 经纬度
-            if (layoutConfig.coords.enabled && locationData?.latitude != null && locationData.latitude != 0.0) {
+            if (layoutConfig.coords.enabled && locationData?.hasCoordinates() == true) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "纬度: ${String.format(Locale.US, "%.6f", locationData.latitude)}  经度: ${String.format(Locale.US, "%.6f", locationData.longitude)}",
+                    text = locationData.coordinateText().orEmpty(),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
 
-            // 自定义文本
+            if (!locationData?.statusMessage.isNullOrBlank() && locationData?.hasAddress() != false) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = locationData?.statusMessage.orEmpty(),
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+
             if (layoutConfig.custom.enabled && preferences.customText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "文本: ",
                         fontSize = 18.sp,

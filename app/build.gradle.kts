@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val signingProperties = Properties().apply {
+    val signingFile = rootProject.file("signing.properties")
+    if (signingFile.exists()) {
+        signingFile.inputStream().use(::load)
+    }
+}
+val hasReleaseSigning = signingProperties.isNotEmpty()
 
 android {
     namespace = "com.watermarkcamera"
@@ -21,18 +31,22 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("watermarkcamera.keystore")
-            storePassword = "watermark123"
-            keyAlias = "watermarkcamera"
-            keyPassword = "watermark123"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

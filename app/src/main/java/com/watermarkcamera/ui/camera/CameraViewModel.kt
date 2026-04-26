@@ -13,6 +13,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.watermarkcamera.camera.CameraXManager
 import com.watermarkcamera.data.WatermarkPreferences
+import com.watermarkcamera.location.LocationFetchResult
 import com.watermarkcamera.location.LocationManager
 import com.watermarkcamera.watermark.WatermarkComposer
 import com.watermarkcamera.watermark.WatermarkConfig
@@ -104,52 +105,66 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun fetchLocation() {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(locationData = it.locationData?.copy(isLoading = true) ?: LocationUiData(
-                    address = "正在获取位置...",
-                    latitude = 0.0,
-                    longitude = 0.0,
-                    isLoading = true
-                ))
+                it.copy(
+                    locationData = it.locationData?.copy(
+                        isLoading = true,
+                        statusMessage = "正在获取位置..."
+                    ) ?: LocationUiData(
+                        statusMessage = "正在获取位置...",
+                        isLoading = true
+                    )
+                )
             }
 
             try {
-                val locationData = locationManager.getLocationWithAddress()
-                if (locationData != null) {
-                    _uiState.update {
-                        it.copy(
-                            locationData = LocationUiData(
-                                address = locationData.address,
-                                latitude = locationData.latitude,
-                                longitude = locationData.longitude,
-                                isLoading = false
-                            )
-                        )
+                when (val result = locationManager.getLocationResult()) {
+                    is LocationFetchResult.Success -> {
+                        _uiState.update {
+                            it.copy(locationData = result.location.toUiData())
+                        }
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            locationData = LocationUiData(
-                                address = "位置获取失败",
-                                latitude = 0.0,
-                                longitude = 0.0,
-                                isLoading = false
+                    is LocationFetchResult.Partial -> {
+                        _uiState.update {
+                            it.copy(
+                                locationData = result.location.toUiData(
+                                    statusMessage = locationManager.getPartialMessage(result.reason)
+                                )
                             )
-                        )
+                        }
+                    }
+                    is LocationFetchResult.Failure -> {
+                        _uiState.update {
+                            it.copy(
+                                locationData = LocationUiData(
+                                    statusMessage = locationManager.getFailureMessage(result.reason),
+                                    isLoading = false
+                                )
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         locationData = LocationUiData(
-                            address = "位置不可用",
-                            latitude = 0.0,
-                            longitude = 0.0,
+                            statusMessage = "位置不可用",
                             isLoading = false
                         )
                     )
                 }
             }
         }
+    }
+
+    private fun com.watermarkcamera.location.LocationData.toUiData(statusMessage: String? = null): LocationUiData {
+        return LocationUiData(
+            address = address,
+            latitude = latitude,
+            longitude = longitude,
+            statusMessage = statusMessage,
+            isLoading = false,
+            addressResolved = addressResolved
+        )
     }
 
     fun takePicture() {

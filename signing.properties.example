@@ -1,0 +1,4 @@
+storeFile=app/watermarkcamera.keystore
+storePassword=replace-me
+keyAlias=watermarkcamera
+keyPassword=replace-me

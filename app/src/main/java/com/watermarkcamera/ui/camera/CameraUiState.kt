@@ -21,8 +21,24 @@ data class CameraUiState(
  * 位置UI数据
  */
 data class LocationUiData(
-    val address: String,
-    val latitude: Double,
-    val longitude: Double,
-    val isLoading: Boolean = false
+    val address: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val statusMessage: String? = null,
+    val isLoading: Boolean = false,
+    val addressResolved: Boolean = false
 )
+
+fun LocationUiData.hasCoordinates(): Boolean {
+    return latitude != null && longitude != null
+}
+
+fun LocationUiData.hasAddress(): Boolean {
+    return addressResolved && !address.isNullOrBlank()
+}
+
+fun LocationUiData.coordinateText(): String? {
+    val lat = latitude ?: return null
+    val lng = longitude ?: return null
+    return "纬度: ${String.format(java.util.Locale.US, "%.6f", lat)}  经度: ${String.format(java.util.Locale.US, "%.6f", lng)}"
+}

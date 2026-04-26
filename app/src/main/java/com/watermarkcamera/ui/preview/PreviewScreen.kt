@@ -1,6 +1,7 @@
 package com.watermarkcamera.ui.preview
 
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -117,7 +117,6 @@ fun PreviewScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // 照片预览
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -128,13 +127,7 @@ fun PreviewScreen(
             ) {
                 uiState.photoUri?.let { uri ->
                     val bitmap = remember(uri) {
-                        try {
-                            context.contentResolver.openInputStream(uri)?.use {
-                                BitmapFactory.decodeStream(it)
-                            }
-                        } catch (e: Exception) {
-                            null
-                        }
+                        decodePreviewBitmap(context, uri, 2048)
                     }
 
                     bitmap?.let {
@@ -161,35 +154,6 @@ fun PreviewScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 照片保存成功提示
-            if (uiState.saveSuccess) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.primaryContainer,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "照片已保存到相册",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // 按钮区域
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -201,11 +165,47 @@ fun PreviewScreen(
                 )
 
                 LargeButton(
-                    text = "分享",
+                    text = if (uiState.isSharing) "分享中..." else "分享",
                     onClick = { viewModel.sharePhoto() },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = !uiState.isSharing
                 )
             }
         }
     }
+}
+
+private fun decodePreviewBitmap(context: android.content.Context, uri: Uri, maxSize: Int): android.graphics.Bitmap? {
+    return try {
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        }
+
+        val sampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxSize)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+        }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private fun calculateInSampleSize(width: Int, height: Int, maxSize: Int): Int {
+    var sampleSize = 1
+    var currentWidth = width
+    var currentHeight = height
+
+    while (currentWidth > maxSize || currentHeight > maxSize) {
+        currentWidth /= 2
+        currentHeight /= 2
+        sampleSize *= 2
+    }
+
+    return sampleSize.coerceAtLeast(1)
 }
