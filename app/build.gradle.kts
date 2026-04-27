@@ -11,7 +11,16 @@ val signingProperties = Properties().apply {
         signingFile.inputStream().use(::load)
     }
 }
+val localProperties = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use(::load)
+    }
+}
 val hasReleaseSigning = signingProperties.isNotEmpty()
+val amapApiKey = localProperties.getProperty("amap.api.key", "")
+val amapSdkVersion = "10.1.200_loc6.4.9_sea9.7.4"
+val supportedAbis = listOf("armeabi-v7a", "arm64-v8a")
 
 android {
     namespace = "com.watermarkcamera"
@@ -25,6 +34,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
+        ndk {
+            abiFilters += supportedAbis
+        }
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -108,6 +121,9 @@ dependencies {
 
     // Location Services
     implementation("com.google.android.gms:play-services-location:21.1.0")
+
+    // AMap
+    implementation("com.amap.api:3dmap-location-search:$amapSdkVersion")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

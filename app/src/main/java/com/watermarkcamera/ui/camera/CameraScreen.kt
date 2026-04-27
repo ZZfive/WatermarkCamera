@@ -21,7 +21,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +52,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watermarkcamera.data.WatermarkPreferences
 import com.watermarkcamera.ui.components.LargeButton
+import com.watermarkcamera.ui.components.SecondaryButton
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,6 +61,8 @@ import java.util.Locale
 fun CameraScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToPreview: (String) -> Unit,
+    onNavigateToPlacePicker: () -> Unit,
+    consumeManualPlaceResult: () -> ManualPlaceData?,
     viewModel: CameraViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -130,6 +132,12 @@ fun CameraScreen(
 
     LaunchedEffect(Unit) {
         checkAndRequestPermissions()
+    }
+
+    LaunchedEffect(Unit) {
+        consumeManualPlaceResult()?.let { place ->
+            viewModel.consumeReturnedPlace(place)
+        }
     }
 
     Scaffold(
@@ -211,7 +219,10 @@ fun CameraScreen(
                     ) {
                         InfoCard(
                             locationData = uiState.locationData,
-                            onRefreshLocation = { viewModel.fetchLocation() }
+                            isManualLocationLocked = uiState.isManualLocationLocked,
+                            onRefreshLocation = { viewModel.fetchLocation() },
+                            onOpenPlacePicker = onNavigateToPlacePicker,
+                            onSwitchToAuto = { viewModel.switchToAutoLocation() }
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -245,7 +256,10 @@ fun CameraScreen(
 @Composable
 private fun InfoCard(
     locationData: LocationUiData?,
-    onRefreshLocation: () -> Unit
+    isManualLocationLocked: Boolean,
+    onRefreshLocation: () -> Unit,
+    onOpenPlacePicker: () -> Unit,
+    onSwitchToAuto: () -> Unit
 ) {
     val context = LocalContext.current
     val preferences = remember { WatermarkPreferences(context) }
@@ -294,7 +308,11 @@ private fun InfoCard(
                         Icon(
                             imageVector = Icons.Default.LocationOn,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = if (isManualLocationLocked) {
+                                MaterialTheme.colorScheme.tertiary
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
                             modifier = Modifier.size(24.dp)
                         )
                         Text(
@@ -310,12 +328,13 @@ private fun InfoCard(
                                 strokeWidth = 2.dp
                             )
                         } else {
+                            val displayText = when {
+                                locationData?.hasAddress() == true -> locationData.address.orEmpty()
+                                locationData?.hasCoordinates() == true -> "地址解析失败"
+                                else -> locationData?.statusMessage ?: "位置不可用"
+                            }
                             Text(
-                                text = when {
-                                    locationData?.hasAddress() == true -> locationData.address.orEmpty()
-                                    locationData?.hasCoordinates() == true -> "地址解析失败"
-                                    else -> locationData?.statusMessage ?: "位置不可用"
-                                },
+                                text = displayText,
                                 fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
@@ -323,18 +342,20 @@ private fun InfoCard(
                     }
                 }
 
-                if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
-                    IconButton(
-                        onClick = onRefreshLocation,
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新位置",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
+                if (isManualLocationLocked) {
+                    Text(
+                        text = "手动",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiary,
+                        modifier = Modifier
+                            .padding(horizontal = 6.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.tertiary,
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
             }
 
@@ -354,6 +375,33 @@ private fun InfoCard(
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
+            }
+
+            if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SecondaryButton(
+                        text = if (isManualLocationLocked) "重新选点" else "手动选点",
+                        onClick = onOpenPlacePicker,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isManualLocationLocked) {
+                        SecondaryButton(
+                            text = "切回自动",
+                            onClick = onSwitchToAuto,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        SecondaryButton(
+                            text = "刷新位置",
+                            onClick = onRefreshLocation,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
 
             if (layoutConfig.custom.enabled && preferences.customText.isNotEmpty()) {

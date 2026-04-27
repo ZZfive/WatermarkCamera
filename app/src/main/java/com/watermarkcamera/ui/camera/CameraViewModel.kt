@@ -37,7 +37,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private lateinit var watermarkComposer: WatermarkComposer
     private val preferences = WatermarkPreferences(application)
 
-    // 从 SharedPreferences 读取设置
     val customText: String get() = preferences.customText
 
     fun initialize(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
@@ -54,8 +53,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
 
-                // 自动获取位置
-                if (_uiState.value.hasLocationPermission) {
+                if (_uiState.value.hasLocationPermission && !_uiState.value.isManualLocationLocked) {
                     fetchLocation()
                 }
             } catch (e: Exception) {
@@ -71,14 +69,56 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 hasLocationPermission = hasLocationPermission
             )
         }
-        if (hasLocationPermission) {
+        if (hasLocationPermission && !_uiState.value.isManualLocationLocked) {
             fetchLocation()
         }
     }
 
-    /**
-     * 切换前后摄像头
-     */
+    fun setManualLocation(place: ManualPlaceData) {
+        _uiState.update {
+            it.copy(
+                locationData = place.toLocationUiData(),
+                isManualLocationLocked = true
+            )
+        }
+    }
+
+    fun consumeReturnedPlace(place: ManualPlaceData?) {
+        if (place != null) {
+            setManualLocation(place)
+        }
+    }
+
+    fun refreshAutoLocation() {
+        if (_uiState.value.isManualLocationLocked) {
+            switchToAutoLocation()
+        } else {
+            fetchLocation()
+        }
+    }
+
+    fun switchToAutoLocation() {
+        _uiState.update {
+            it.copy(
+                isManualLocationLocked = false,
+                locationData = it.locationData?.copy(
+                    source = LocationSource.AUTO,
+                    title = null,
+                    isLoading = true,
+                    statusMessage = "正在获取位置..."
+                ) ?: LocationUiData(
+                    source = LocationSource.AUTO,
+                    isLoading = true,
+                    statusMessage = "正在获取位置..."
+                )
+            )
+        }
+
+        if (_uiState.value.hasLocationPermission) {
+            fetchLocation()
+        }
+    }
+
     fun switchCamera(previewView: PreviewView) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -104,53 +144,64 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun fetchLocation() {
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update {
-                it.copy(
-                    locationData = it.locationData?.copy(
-                        isLoading = true,
-                        statusMessage = "正在获取位置..."
-                    ) ?: LocationUiData(
-                        statusMessage = "正在获取位置...",
-                        isLoading = true
+            _uiState.update { current ->
+                if (current.isManualLocationLocked) {
+                    current
+                } else {
+                    current.copy(
+                        locationData = current.locationData?.copy(
+                            isLoading = true,
+                            statusMessage = "正在获取位置...",
+                            source = LocationSource.AUTO,
+                            title = null
+                        ) ?: LocationUiData(
+                            statusMessage = "正在获取位置...",
+                            isLoading = true,
+                            source = LocationSource.AUTO
+                        )
                     )
-                )
+                }
+            }
+
+            if (_uiState.value.isManualLocationLocked) {
+                return@launch
             }
 
             try {
                 when (val result = locationManager.getLocationResult()) {
                     is LocationFetchResult.Success -> {
-                        _uiState.update {
-                            it.copy(locationData = result.location.toUiData())
+                        val locationData = result.location.toUiData()
+                        _uiState.update { current ->
+                            if (current.isManualLocationLocked) current else current.copy(locationData = locationData)
                         }
                     }
                     is LocationFetchResult.Partial -> {
-                        _uiState.update {
-                            it.copy(
-                                locationData = result.location.toUiData(
-                                    statusMessage = locationManager.getPartialMessage(result.reason)
-                                )
-                            )
+                        val locationData = result.location.toUiData(
+                            statusMessage = locationManager.getPartialMessage(result.reason)
+                        )
+                        _uiState.update { current ->
+                            if (current.isManualLocationLocked) current else current.copy(locationData = locationData)
                         }
                     }
                     is LocationFetchResult.Failure -> {
-                        _uiState.update {
-                            it.copy(
-                                locationData = LocationUiData(
-                                    statusMessage = locationManager.getFailureMessage(result.reason),
-                                    isLoading = false
-                                )
-                            )
+                        val locationData = LocationUiData(
+                            statusMessage = locationManager.getFailureMessage(result.reason),
+                            isLoading = false,
+                            source = LocationSource.AUTO
+                        )
+                        _uiState.update { current ->
+                            if (current.isManualLocationLocked) current else current.copy(locationData = locationData)
                         }
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        locationData = LocationUiData(
-                            statusMessage = "位置不可用",
-                            isLoading = false
-                        )
-                    )
+                val locationData = LocationUiData(
+                    statusMessage = "位置不可用",
+                    isLoading = false,
+                    source = LocationSource.AUTO
+                )
+                _uiState.update { current ->
+                    if (current.isManualLocationLocked) current else current.copy(locationData = locationData)
                 }
             }
         }
@@ -163,7 +214,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             longitude = longitude,
             statusMessage = statusMessage,
             isLoading = false,
-            addressResolved = addressResolved
+            addressResolved = addressResolved,
+            source = LocationSource.AUTO
         )
     }
 
@@ -174,13 +226,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val originalBitmap = cameraXManager.takePictureToBitmap()
                 if (originalBitmap != null) {
-                    // 合成水印
                     val watermarkedBitmap = composeWatermarkBitmap(originalBitmap)
                     if (watermarkedBitmap != null) {
-                        // 保存水印照片
                         val watermarkedUri = saveBitmapToGallery(watermarkedBitmap, "Watermark_")
 
-                        // 如果设置保留原图，也保存原图
                         if (preferences.saveOriginal) {
                             saveBitmapToGallery(originalBitmap, "Original_")
                         }

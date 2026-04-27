@@ -1,0 +1,6 @@
+# 高德地图 SDK API Key 配置
+# 1. 前往 https://console.amap.com 注册并创建应用
+# 2. 获取 API Key（需绑定应用的 SHA1 指纹与包名）
+# 3. 复制此文件为 local.properties（该文件已在 .gitignore 中）
+# 4. 将下方占位符替换为你的真实 Key
+amap.api.key=YOUR_AMAP_API_KEY_HERE
