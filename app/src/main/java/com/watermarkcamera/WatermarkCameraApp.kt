@@ -1,13 +1,14 @@
 package com.watermarkcamera
 
-import android.net.Uri
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.SavedStateHandle
 import com.watermarkcamera.ui.camera.CameraScreen
+import com.watermarkcamera.ui.camera.LocationUiData
 import com.watermarkcamera.ui.camera.ManualPlaceData
+import com.watermarkcamera.ui.camera.displayAddress
 import com.watermarkcamera.ui.placepicker.PlacePickerScreen
 import com.watermarkcamera.ui.preview.PreviewScreen
 import com.watermarkcamera.ui.settings.SettingsScreen
@@ -15,6 +16,47 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 
 private const val MANUAL_PLACE_RESULT_KEY = "manual_place_result"
+private const val PLACE_PICKER_SEED_KEY = "place_picker_seed"
+
+private fun LocationUiData.toPlacePickerSeed(): ManualPlaceData? {
+    val latitude = latitude ?: return null
+    val longitude = longitude ?: return null
+    val displayText = displayAddress().orEmpty().ifBlank { "当前位置" }
+    return ManualPlaceData(
+        title = title?.takeIf { it.isNotBlank() } ?: displayText,
+        address = address?.takeIf { it.isNotBlank() } ?: displayText,
+        latitude = latitude,
+        longitude = longitude
+    )
+}
+
+private fun consumeManualPlaceResult(savedStateHandle: SavedStateHandle?): ManualPlaceData? {
+    val place = savedStateHandle?.get<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
+    if (place != null) {
+        savedStateHandle.remove<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
+    }
+    return place
+}
+
+private fun readPlacePickerSeed(savedStateHandle: SavedStateHandle?): ManualPlaceData? {
+    return savedStateHandle?.get(PLACE_PICKER_SEED_KEY)
+}
+
+private fun setPlacePickerSeed(savedStateHandle: SavedStateHandle?, locationData: LocationUiData?) {
+    savedStateHandle?.set(PLACE_PICKER_SEED_KEY, locationData?.toPlacePickerSeed())
+}
+
+private fun updatePlacePickerSeed(savedStateHandle: SavedStateHandle?, place: ManualPlaceData?) {
+    savedStateHandle?.set(PLACE_PICKER_SEED_KEY, place)
+}
+
+private fun clearPlacePickerSeed(savedStateHandle: SavedStateHandle?) {
+    savedStateHandle?.remove<ManualPlaceData>(PLACE_PICKER_SEED_KEY)
+}
+
+private fun clearManualPlaceResult(savedStateHandle: SavedStateHandle?) {
+    savedStateHandle?.remove<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
+}
 
 sealed class Screen(val route: String) {
     data object Camera : Screen("camera")
@@ -37,17 +79,7 @@ fun WatermarkCameraApp() {
         startDestination = Screen.Camera.route
     ) {
         composable(Screen.Camera.route) {
-            LaunchedEffect(Unit) {
-                val place = navController.currentBackStackEntry
-                    ?.savedStateHandle
-                    ?.get<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
-                if (place != null) {
-                    navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.remove<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
-                }
-            }
-
+            val currentHandle = navController.currentBackStackEntry?.savedStateHandle
             CameraScreen(
                 onNavigateToSettings = {
                     navController.navigate(Screen.Settings.route)
@@ -55,19 +87,13 @@ fun WatermarkCameraApp() {
                 onNavigateToPreview = { uri ->
                     navController.navigate(Screen.Preview.createRoute(uri))
                 },
-                onNavigateToPlacePicker = {
+                onNavigateToPlacePicker = { locationData ->
+                    clearManualPlaceResult(currentHandle)
+                    setPlacePickerSeed(currentHandle, locationData)
                     navController.navigate(Screen.PlacePicker.route)
                 },
                 consumeManualPlaceResult = {
-                    val place = navController.currentBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
-                    if (place != null) {
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.remove<ManualPlaceData>(MANUAL_PLACE_RESULT_KEY)
-                    }
-                    place
+                    consumeManualPlaceResult(currentHandle)
                 }
             )
         }
@@ -81,14 +107,17 @@ fun WatermarkCameraApp() {
         }
 
         composable(Screen.PlacePicker.route) {
+            val previousSavedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+            val seedPlace = readPlacePickerSeed(previousSavedStateHandle)
             PlacePickerScreen(
+                initialPlace = seedPlace,
                 onNavigateBack = {
+                    clearPlacePickerSeed(previousSavedStateHandle)
                     navController.popBackStack()
                 },
                 onConfirmPlace = { place ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set(MANUAL_PLACE_RESULT_KEY, place)
+                    previousSavedStateHandle?.set(MANUAL_PLACE_RESULT_KEY, place)
+                    updatePlacePickerSeed(previousSavedStateHandle, place)
                     navController.popBackStack()
                 }
             )

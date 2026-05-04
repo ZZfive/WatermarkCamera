@@ -61,7 +61,7 @@ import java.util.Locale
 fun CameraScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToPreview: (String) -> Unit,
-    onNavigateToPlacePicker: () -> Unit,
+    onNavigateToPlacePicker: (LocationUiData?) -> Unit,
     consumeManualPlaceResult: () -> ManualPlaceData?,
     viewModel: CameraViewModel = viewModel()
 ) {
@@ -134,7 +134,7 @@ fun CameraScreen(
         checkAndRequestPermissions()
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(uiState.isManualLocationLocked, uiState.locationData) {
         consumeManualPlaceResult()?.let { place ->
             viewModel.consumeReturnedPlace(place)
         }
@@ -221,7 +221,7 @@ fun CameraScreen(
                             locationData = uiState.locationData,
                             isManualLocationLocked = uiState.isManualLocationLocked,
                             onRefreshLocation = { viewModel.fetchLocation() },
-                            onOpenPlacePicker = onNavigateToPlacePicker,
+                            onOpenPlacePicker = { onNavigateToPlacePicker(uiState.locationData) },
                             onSwitchToAuto = { viewModel.switchToAutoLocation() }
                         )
 
@@ -329,7 +329,7 @@ private fun InfoCard(
                             )
                         } else {
                             val displayText = when {
-                                locationData?.hasAddress() == true -> locationData.address.orEmpty()
+                                locationData?.hasAddress() == true -> locationData.displayAddress().orEmpty()
                                 locationData?.hasCoordinates() == true -> "地址解析失败"
                                 else -> locationData?.statusMessage ?: "位置不可用"
                             }
