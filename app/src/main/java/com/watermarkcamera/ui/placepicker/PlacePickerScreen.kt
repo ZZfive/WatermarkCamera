@@ -30,14 +30,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +65,7 @@ fun PlacePickerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val mapView = remember {
         MapView(context).apply {
             onCreate(null)
@@ -68,6 +74,40 @@ fun PlacePickerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
+    }
+    val currentMapView by rememberUpdatedState(mapView)
+
+    DisposableEffect(lifecycleOwner, currentMapView) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                currentMapView.onResume()
+            }
+
+            override fun onResume(owner: LifecycleOwner) {
+                currentMapView.onResume()
+            }
+
+            override fun onPause(owner: LifecycleOwner) {
+                currentMapView.onPause()
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                currentMapView.onPause()
+            }
+
+            override fun onDestroy(owner: LifecycleOwner) {
+                currentMapView.onDestroy()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            currentMapView.onPause()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        mapView.map.uiSettings.isZoomControlsEnabled = false
     }
 
     LaunchedEffect(uiState.selectedPlace) {
@@ -156,7 +196,10 @@ fun PlacePickerScreen(
             ) {
                 AndroidView(
                     factory = { mapView },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    update = {
+                        it.onResume()
+                    }
                 )
 
                 if (uiState.selectedPlace == null && !uiState.isSearching) {

@@ -1,6 +1,8 @@
 package com.watermarkcamera.ui.camera
 
 import android.net.Uri
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
 
 /**
  * 相机界面状态
@@ -37,12 +39,13 @@ data class LocationUiData(
     val title: String? = null
 )
 
+@Parcelize
 data class ManualPlaceData(
     val title: String,
     val address: String,
     val latitude: Double,
     val longitude: Double
-)
+) : Parcelable
 
 fun ManualPlaceData.toLocationUiData(): LocationUiData {
     return LocationUiData(
