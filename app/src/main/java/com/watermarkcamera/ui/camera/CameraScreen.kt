@@ -5,7 +5,15 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,17 +22,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,9 +51,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -52,7 +69,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.watermarkcamera.data.WatermarkPreferences
 import com.watermarkcamera.ui.components.LargeButton
-import com.watermarkcamera.ui.components.SecondaryButton
+import com.watermarkcamera.watermark.WatermarkLayoutConfig
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,7 +87,11 @@ fun CameraScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -140,6 +161,9 @@ fun CameraScreen(
         }
     }
 
+    val layoutConfig = remember { WatermarkPreferences(context).loadLayoutConfig() }
+    val preferences = remember { WatermarkPreferences(context) }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
@@ -148,6 +172,42 @@ fun CameraScreen(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = Color.White
                 )
+            }
+        },
+        floatingActionButton = {
+            if (!uiState.hasCameraPermission) return@Scaffold
+            Box(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (uiState.isLoading) {
+                    FloatingActionButton(
+                        onClick = {},
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                } else {
+                    FloatingActionButton(
+                        onClick = { viewModel.takePicture() },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        elevation = FloatingActionButtonDefaults.elevation(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = "拍照",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
             }
         }
     ) { paddingValues ->
@@ -161,93 +221,61 @@ fun CameraScreen(
                     onRequestPermission = { checkAndRequestPermissions() }
                 )
             } else {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        AndroidView(
-                            factory = { previewView },
-                            modifier = Modifier.fillMaxSize()
+                // Full-screen camera preview
+                AndroidView(
+                    factory = { previewView },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Overlay buttons: settings and switch camera
+                IconButton(
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp, end = 8.dp)
+                        .size(40.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(10.dp)
                         )
-
-                        IconButton(
-                            onClick = onNavigateToSettings,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(16.dp)
-                                .size(48.dp)
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "设置",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.switchCamera(previewView) },
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(16.dp)
-                                .size(48.dp)
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Cameraswitch,
-                                contentDescription = "切换摄像头",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(16.dp)
-                    ) {
-                        InfoCard(
-                            locationData = uiState.locationData,
-                            isManualLocationLocked = uiState.isManualLocationLocked,
-                            onRefreshLocation = { viewModel.fetchLocation() },
-                            onOpenPlacePicker = { onNavigateToPlacePicker(uiState.locationData) },
-                            onSwitchToAuto = { viewModel.switchToAutoLocation() }
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        if (uiState.isLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .height(72.dp)
-                                    .fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(48.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        } else {
-                            LargeButton(
-                                text = "拍照",
-                                onClick = { viewModel.takePicture() },
-                                enabled = uiState.isCameraReady && !uiState.isLoading
-                            )
-                        }
-                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "设置",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
+
+                IconButton(
+                    onClick = { viewModel.switchCamera(previewView) },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 8.dp, start = 8.dp)
+                        .size(40.dp)
+                        .background(
+                            color = Color.Black.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cameraswitch,
+                        contentDescription = "切换摄像头",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Bottom info card overlay
+                InfoCard(
+                    locationData = uiState.locationData,
+                    isManualLocationLocked = uiState.isManualLocationLocked,
+                    layoutConfig = layoutConfig,
+                    preferences = preferences,
+                    onRefreshLocation = { viewModel.fetchLocation() },
+                    onOpenPlacePicker = { onNavigateToPlacePicker(uiState.locationData) },
+                    onSwitchToAuto = { viewModel.switchToAutoLocation() }
+                )
             }
         }
     }
@@ -257,170 +285,233 @@ fun CameraScreen(
 private fun InfoCard(
     locationData: LocationUiData?,
     isManualLocationLocked: Boolean,
+    layoutConfig: WatermarkLayoutConfig,
+    preferences: WatermarkPreferences,
     onRefreshLocation: () -> Unit,
     onOpenPlacePicker: () -> Unit,
     onSwitchToAuto: () -> Unit
 ) {
-    val context = LocalContext.current
-    val preferences = remember { WatermarkPreferences(context) }
-    val layoutConfig = preferences.loadLayoutConfig()
+    var panelExpanded by remember { mutableStateOf(true) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        shape = RoundedCornerShape(12.dp)
+    val cardBottomPadding = 96.dp
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(horizontal = 12.dp)
+                .padding(bottom = cardBottomPadding)
         ) {
-            if (layoutConfig.timestamp.enabled) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "时间: ",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+            // Compact header - always visible
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { panelExpanded = !panelExpanded }
+                    .background(
+                        color = Color.Black.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
                     )
-                    Text(
-                        text = SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.getDefault())
-                            .format(Date()),
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (layoutConfig.address.enabled) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (layoutConfig.timestamp.enabled) {
+                        Text(
+                            text = SimpleDateFormat("HH:mm  yyyy-MM-dd", Locale.getDefault())
+                                .format(Date()),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
+                    if (layoutConfig.address.enabled && locationData?.hasAddress() == true) {
                         Icon(
                             imageVector = Icons.Default.LocationOn,
                             contentDescription = null,
-                            tint = if (isManualLocationLocked) {
-                                MaterialTheme.colorScheme.tertiary
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            modifier = Modifier.size(24.dp)
+                            tint = if (isManualLocationLocked) Color(0xFFFFB300) else Color.White,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(16.dp)
                         )
                         Text(
-                            text = "位置: ",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(start = 4.dp)
+                            text = " " + (locationData?.displayAddress()
+                                ?.takeIf { it.length <= 20 }
+                                ?: locationData?.displayAddress()?.take(20) + "…").orEmpty(),
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.9f),
+                            maxLines = 1
                         )
-                        if (locationData?.isLoading == true) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            val displayText = when {
-                                locationData?.hasAddress() == true -> locationData.displayAddress().orEmpty()
-                                locationData?.hasCoordinates() == true -> "地址解析失败"
-                                else -> locationData?.statusMessage ?: "位置不可用"
-                            }
+                    }
+                    Icon(
+                        imageVector = if (panelExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (panelExpanded) "收起" else "展开",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .size(20.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = panelExpanded,
+                enter = expandVertically(expandFrom = Alignment.Top, animationSpec = tween(200)) + fadeIn(animationSpec = tween(200)),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(200)) + fadeOut(animationSpec = tween(200))
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Black.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(
+                        bottomStart = 16.dp,
+                        bottomEnd = 16.dp
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        if (layoutConfig.timestamp.enabled) {
                             Text(
-                                text = displayText,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                text = "时间: " + SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.getDefault())
+                                    .format(Date()),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
                             )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+
+                        if (layoutConfig.address.enabled) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = if (isManualLocationLocked) Color(0xFFFFB300) else Color(0xFF4CAF50),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "位置: ",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
+                                if (locationData?.isLoading == true) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
+                                    )
+                                } else {
+                                    val displayText = when {
+                                        locationData?.hasAddress() == true -> locationData.displayAddress().orEmpty()
+                                        locationData?.hasCoordinates() == true -> "地址解析失败"
+                                        else -> locationData?.statusMessage ?: "位置不可用"
+                                    }
+                                    Text(
+                                        text = displayText,
+                                        fontSize = 16.sp,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+
+                        if (layoutConfig.coords.enabled && locationData?.hasCoordinates() == true) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = locationData.coordinateText().orEmpty(),
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        if (!locationData?.statusMessage.isNullOrBlank() && locationData?.hasAddress() != false) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = locationData?.statusMessage.orEmpty(),
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextButton(
+                                    text = if (isManualLocationLocked) "重新选点" else "手动选点",
+                                    onClick = onOpenPlacePicker,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isManualLocationLocked) {
+                                    OutlinedTextButton(
+                                        text = "切回自动",
+                                        onClick = onSwitchToAuto,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                } else {
+                                    OutlinedTextButton(
+                                        text = "刷新位置",
+                                        onClick = onRefreshLocation,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (layoutConfig.custom.enabled && preferences.customText.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "文本: ",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = preferences.customText,
+                                    fontSize = 16.sp,
+                                    color = Color(0xFF4CAF50)
+                                )
+                            }
                         }
                     }
                 }
-
-                if (isManualLocationLocked) {
-                    Text(
-                        text = "手动",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onTertiary,
-                        modifier = Modifier
-                            .padding(horizontal = 6.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.tertiary,
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            if (layoutConfig.coords.enabled && locationData?.hasCoordinates() == true) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = locationData.coordinateText().orEmpty(),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-
-            if (!locationData?.statusMessage.isNullOrBlank() && locationData?.hasAddress() != false) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = locationData?.statusMessage.orEmpty(),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-
-            if (layoutConfig.address.enabled || layoutConfig.coords.enabled) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    SecondaryButton(
-                        text = if (isManualLocationLocked) "重新选点" else "手动选点",
-                        onClick = onOpenPlacePicker,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (isManualLocationLocked) {
-                        SecondaryButton(
-                            text = "切回自动",
-                            onClick = onSwitchToAuto,
-                            modifier = Modifier.weight(1f)
-                        )
-                    } else {
-                        SecondaryButton(
-                            text = "刷新位置",
-                            onClick = onRefreshLocation,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
-            if (layoutConfig.custom.enabled && preferences.customText.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "文本: ",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = preferences.customText,
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
             }
         }
+    }
+}
+
+@Composable
+private fun OutlinedTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
+        )
     }
 }
 

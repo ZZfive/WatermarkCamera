@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -73,12 +74,14 @@ class CameraXManager(
                     cameraProvider = cameraProviderFuture.get()
 
                     preview = Preview.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         .build()
                         .also {
                             it.setSurfaceProvider(previewView?.surfaceProvider)
                         }
 
                     imageCapture = ImageCapture.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setJpegQuality(90)
                         .build()

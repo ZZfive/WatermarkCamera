@@ -25,7 +25,7 @@ fun FontSizeSlider(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
     minValue: Int = 12,
-    maxValue: Int = 48
+    maxValue: Int = 96
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
