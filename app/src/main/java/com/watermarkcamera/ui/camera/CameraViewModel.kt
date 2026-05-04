@@ -142,6 +142,28 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateCameraRotation(previewView: PreviewView) {
+        if (!::cameraXManager.isInitialized) return
+        cameraXManager.updateRotation(previewView)
+    }
+
+    fun rebindCamera(previewView: PreviewView) {
+        if (!::cameraXManager.isInitialized) return
+        viewModelScope.launch {
+            try {
+                val started = cameraXManager.startCamera(previewView)
+                _uiState.update {
+                    it.copy(
+                        isCameraReady = started,
+                        isUsingFrontCamera = cameraXManager.isUsingFrontCamera
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "相机重置失败: ${e.message}") }
+            }
+        }
+    }
+
     fun fetchLocation() {
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { current ->

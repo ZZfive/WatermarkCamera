@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.view.Surface
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -18,13 +19,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/**
- * CameraX 管理器
- *
- * 优化点：
- * - ByteArray 缓冲区复用，减少 GC
- * - 及时回收旋转/翻转后的 bitmap
- */
 class CameraXManager(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner
@@ -34,27 +28,16 @@ class CameraXManager(
     private var preview: Preview? = null
     private var currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     private var previewView: PreviewView? = null
-
-    // ByteArray 缓冲区复用，减少每帧分配
     private var reusableByteArray: ByteArray? = null
 
-    /**
-     * 当前是否使用前置摄像头
-     */
     val isUsingFrontCamera: Boolean
         get() = currentCameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA
 
-    /**
-     * 启动相机
-     */
     suspend fun startCamera(previewView: PreviewView): Boolean {
         this.previewView = previewView
         return bindCamera(currentCameraSelector)
     }
 
-    /**
-     * 切换前后摄像头
-     */
     suspend fun switchCamera(previewView: PreviewView): Boolean {
         this.previewView = previewView
         currentCameraSelector = if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
@@ -72,9 +55,11 @@ class CameraXManager(
             cameraProviderFuture.addListener({
                 try {
                     cameraProvider = cameraProviderFuture.get()
+                    val targetRotation = previewView?.display?.rotation ?: Surface.ROTATION_0
 
                     preview = Preview.Builder()
                         .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setTargetRotation(targetRotation)
                         .build()
                         .also {
                             it.setSurfaceProvider(previewView?.surfaceProvider)
@@ -82,6 +67,7 @@ class CameraXManager(
 
                     imageCapture = ImageCapture.Builder()
                         .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                        .setTargetRotation(targetRotation)
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .setJpegQuality(90)
                         .build()
@@ -102,9 +88,13 @@ class CameraXManager(
         }
     }
 
-    /**
-     * 拍照并返回 Bitmap（不保存到 MediaStore）
-     */
+    fun updateRotation(previewView: PreviewView? = this.previewView) {
+        this.previewView = previewView ?: this.previewView
+        val targetRotation = this.previewView?.display?.rotation ?: Surface.ROTATION_0
+        preview?.targetRotation = targetRotation
+        imageCapture?.targetRotation = targetRotation
+    }
+
     suspend fun takePictureToBitmap(): Bitmap? {
         return suspendCancellableCoroutine { continuation ->
             val imageCapture = imageCapture ?: run {
@@ -117,7 +107,6 @@ class CameraXManager(
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(imageProxy: ImageProxy) {
                         var bitmap = imageProxyToBitmap(imageProxy)
-                        // 前置摄像头需要镜像翻转
                         if (isUsingFrontCamera && bitmap != null) {
                             val flipped = flipHorizontally(bitmap)
                             if (flipped !== bitmap) {
@@ -137,14 +126,10 @@ class CameraXManager(
         }
     }
 
-    /**
-     * 将 ImageProxy 转换为 Bitmap
-     */
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
         val buffer = imageProxy.planes[0].buffer
         val size = buffer.remaining()
 
-        // 复用 ByteArray 缓冲区，避免每帧分配
         val bytes = if (reusableByteArray?.size ?: 0 >= size) {
             reusableByteArray!!
         } else {
@@ -153,8 +138,6 @@ class CameraXManager(
         buffer.get(bytes, 0, size)
 
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, size) ?: return null
-
-        // 根据旋转角度校正
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees
         return if (rotationDegrees != 0) {
             val matrix = Matrix().apply {
@@ -162,7 +145,6 @@ class CameraXManager(
             }
             val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
             rotated.density = bitmap.density
-            // 旋转后及时回收原 bitmap
             if (rotated !== bitmap) {
                 bitmap.recycle()
             }
@@ -172,9 +154,6 @@ class CameraXManager(
         }
     }
 
-    /**
-     * 水平翻转（用于前置摄像头）
-     */
     private fun flipHorizontally(bitmap: Bitmap): Bitmap {
         val matrix = Matrix().apply {
             preScale(-1f, 1f)
@@ -184,9 +163,6 @@ class CameraXManager(
         return flipped
     }
 
-    /**
-     * 停止相机
-     */
     fun stopCamera() {
         cameraProvider?.unbindAll()
     }
