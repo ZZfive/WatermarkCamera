@@ -168,19 +168,19 @@ class WatermarkComposer(private val context: Context) {
     ): Pair<Float, Float> {
         val scaledMargin = marginFromEdge * imageScale
         val (baseX, baseY) = when (alignment) {
-            WatermarkAlignment.TOP_LEFT -> Pair(scaledMargin, scaledMargin)
-            WatermarkAlignment.TOP -> Pair(imageWidth / 2 - blockWidth / 2, scaledMargin)
-            WatermarkAlignment.TOP_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, scaledMargin)
-            WatermarkAlignment.LEFT -> Pair(scaledMargin, imageHeight / 2 - blockHeight / 2)
-            WatermarkAlignment.CENTER -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight / 2 - blockHeight / 2)
-            WatermarkAlignment.RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight / 2 - blockHeight / 2)
-            WatermarkAlignment.BOTTOM_LEFT -> Pair(scaledMargin, imageHeight - blockHeight - scaledMargin)
-            WatermarkAlignment.BOTTOM -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight - blockHeight - scaledMargin)
-            WatermarkAlignment.BOTTOM_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight - blockHeight - scaledMargin)
+            WatermarkAlignment.TOP_LEFT -> Pair(scaledMargin, scaledMargin + stackOffset)
+            WatermarkAlignment.TOP -> Pair(imageWidth / 2 - blockWidth / 2, scaledMargin + stackOffset)
+            WatermarkAlignment.TOP_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, scaledMargin + stackOffset)
+            WatermarkAlignment.LEFT -> Pair(scaledMargin, imageHeight / 2 - blockHeight / 2 + stackOffset)
+            WatermarkAlignment.CENTER -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight / 2 - blockHeight / 2 + stackOffset)
+            WatermarkAlignment.RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight / 2 - blockHeight / 2 + stackOffset)
+            WatermarkAlignment.BOTTOM_LEFT -> Pair(scaledMargin, imageHeight - blockHeight - scaledMargin - stackOffset)
+            WatermarkAlignment.BOTTOM -> Pair(imageWidth / 2 - blockWidth / 2, imageHeight - blockHeight - scaledMargin - stackOffset)
+            WatermarkAlignment.BOTTOM_RIGHT -> Pair(imageWidth - blockWidth - scaledMargin, imageHeight - blockHeight - scaledMargin - stackOffset)
         }
 
-        // 应用堆叠偏移：向下移动
-        return Pair(baseX, baseY + stackOffset)
+        // 堆叠偏移已在各分支中处理（顶部/中部加，底部减）
+        return Pair(baseX, baseY)
     }
 
     /**
